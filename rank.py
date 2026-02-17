@@ -1,6 +1,6 @@
 import click
 import json
-from operations import run_rank
+from operations import run_reset, run_rank
 
 
 class OperationGroup(click.Group):
@@ -39,7 +39,30 @@ def shared_db_options(f):
 
 
 
-@cli.command(short_help="Vectorize rows in CockroachDB using a specified encoding model.")
+@cli.command(short_help="Reset BM25 stats.")
+@shared_db_options
+def reset(
+    url,
+    table,
+    input_col,
+    output_col,
+    verbose
+):
+
+    args = {
+        "url": url,
+        "table": table,
+        "input": input_col,
+        "output": output_col,
+        "verbose": verbose
+    }
+
+    # print(json.dumps(args, indent=2))
+    run_reset(args)
+
+
+
+@cli.command(short_help="Run BM25 ranking.")
 @shared_db_options
 def rank(
     url,
