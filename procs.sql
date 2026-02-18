@@ -68,54 +68,61 @@ AS $$
 
 DECLARE
     v_reset boolean := false;
-    v_new_tsv tsvector := NULL;
-    v_old_tsv tsvector := NULL;
+    v_return passage := NULL;
 
 BEGIN
     RAISE NOTICE 'Trigger fired for operation: %', TG_OP;
-
-    IF (TG_OP = 'INSERT' OR TG_OP = 'UPDATE') THEN
-        v_new_tsv := (NEW).passage_tsv;
-    END IF;
-
-    IF (TG_OP = 'DELETE' OR TG_OP = 'UPDATE') THEN
-        v_old_tsv := (OLD).passage_tsv;
-    END IF;
 
     -- Session-level flag
     v_reset := coalesce(current_setting('bm25.reset', true), 'false') = 'true';
     RAISE NOTICE 'v_reset: %', v_reset;
 
     IF TG_OP = 'INSERT' OR TG_OP = 'UPDATE' AND v_reset THEN
+
+        NEW.passage_tsv := to_tsvector('english', (NEW).passage);
+        NEW.passage_tsv_len := tsv_doclen((NEW).passage_tsv);
+        v_return := NEW;
+
         INSERT INTO passage_passage_tsv_terms (term, freq)
         SELECT term, 1
-        FROM extract_passage_terms(v_new_tsv) AS term
+        FROM extract_passage_terms((NEW).passage_tsv) AS term
         ON CONFLICT (term)
         DO UPDATE SET freq = passage_passage_tsv_terms.freq + 1;
 
+
     ELSIF TG_OP = 'DELETE' THEN
+        v_return := OLD;
+
         UPDATE passage_passage_tsv_terms AS t
         SET freq = t.freq - 1
-        FROM extract_passage_terms(v_old_tsv) AS term
+        FROM extract_passage_terms((OLD).passage_tsv) AS term
         WHERE t.term = term.term;
 
+
     ELSIF TG_OP = 'UPDATE' THEN
+
+        IF (NEW).passage <> (OLD).passage THEN
+            NEW.passage_tsv := to_tsvector('english', (NEW).passage);
+            NEW.passage_tsv_len := tsv_doclen((NEW).passage_tsv);
+        END IF;
+        v_return := NEW;
+
         -- First: Handle removals
         UPDATE passage_passage_tsv_terms AS t
         SET freq = t.freq - 1
         FROM (
-            SELECT term FROM extract_passage_terms(v_old_tsv)
+            SELECT term FROM extract_passage_terms((OLD).passage_tsv)
             EXCEPT
-            SELECT term FROM extract_passage_terms(v_new_tsv)
+            SELECT term FROM extract_passage_terms((NEW).passage_tsv)
         ) AS removed
         WHERE t.term = removed.term;
 
         -- Second: Handle additions
         INSERT INTO passage_passage_tsv_terms (term, freq)
         SELECT term, 1 FROM (
-            SELECT term FROM extract_passage_terms(v_new_tsv)
+            SELECT term FROM extract_passage_terms((NEW).passage_tsv)
             EXCEPT
-            SELECT term FROM extract_passage_terms(v_old_tsv)
+            SELECT term FROM extract_passage_terms((OLD).passage_tsv)
         ) AS added
         ON CONFLICT (term)
         DO UPDATE SET freq = passage_passage_tsv_terms.freq + 1;
@@ -125,13 +132,13 @@ BEGIN
 
     END IF;
 
-    RETURN NULL;
+    RETURN v_return;
 END;
 $$;
 
 
 
 CREATE TRIGGER sync_passage_terms
-    AFTER INSERT OR UPDATE OR DELETE ON passage
+    BEFORE INSERT OR UPDATE OR DELETE ON passage
     FOR EACH ROW
     EXECUTE FUNCTION passage_passage_tsv_terms_sync();

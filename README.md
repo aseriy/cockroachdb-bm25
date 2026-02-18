@@ -126,7 +126,7 @@ But architecturally, your direction is coherent.
 
 Mapping BM25 internals to DB structures
 
-1️⃣ doc_stats
+## doc_stats
 
 Purpose:
 Stores per-document term count (token count).
@@ -138,43 +138,9 @@ Meaning:
 Total number of lexeme occurrences in the document.
 Derived from number of positions in tsvector.
 
-2️⃣ term_stats
+## term_stats
 
-Purpose:
-Stores document frequency per term.
-
-```sql
-SELECT id, token
-FROM passage,
-     LATERAL unnest(string_to_array(passage_tsv::TEXT, ' ')) AS token
-LIMIT 10;
-```
-
-```sql
-SELECT
-    id,
-    trim(both '''' FROM split_part(token, ':', 1)) AS term,
-    split_part(token, ':', 2) AS positions_raw,
-    array_length(
-        string_to_array(split_part(token, ':', 2), ','),
-        1
-    ) AS freq
-FROM passage,
-     LATERAL unnest(string_to_array(passage_tsv::TEXT, ' ')) AS token
-WHERE id = '00002c3d-6cd3-4cc5-a0a1-879812feca07';
-```
-
-```sql
-SELECT
-    trim(both '''' FROM split_part(token, ':', 1)) AS term,
-    array_length(
-        string_to_array(split_part(token, ':', 2), ','),
-        1
-    ) AS freq
-FROM passage,
-     LATERAL unnest(string_to_array(passage_tsv::TEXT, ' ')) AS token
-WHERE id = $1;
-```
+Purpose: Stores document frequency per term.
 
 ```sql
 CREATE TABLE IF NOT EXISTS passage_passage_tsv_terms (
@@ -186,44 +152,10 @@ CREATE TABLE IF NOT EXISTS passage_passage_tsv_terms (
 RESET tracking table:
 
 ```sql
-CREATE TABLE IF NOT EXISTS passage_passage_tsv_reset (
-    id UUID PRIMARY KEY,
-    done TIMESTAMP
-)
-```
-
-
-
-```sql
-INSERT INTO passage_passage_tsv_terms (term, freq)
-SELECT term, 1
-FROM (
-    SELECT
-        trim(both '\''' FROM split_part(token, ':', 1)) AS term
-    FROM passage,
-         LATERAL unnest(string_to_array(passage_tsv::TEXT, ' ')) AS token
-    WHERE id = $1
-) AS terms
-ON CONFLICT (term)
-DO UPDATE SET freq = passage_passage_tsv_terms.freq + 1;
-```
-
-Lock the table for write while RESET is running
-
-```sql
-BEGIN;
--- Set the session to READ COMMITTED
-SET SESSION CHARACTERISTICS AS TRANSACTION ISOLATION LEVEL READ COMMITTED;
-SELECT 1 FROM passage WHERE 1=1 FOR SHARE;
--- Run your read-heavy proc here
-COMMIT;
-```
-
-To reset:
-
-```sql
 UPDATE passage_passage_tsv_terms SET freq=0;
 ```
+
+To test the trigger/term_stats update:
 
 ```sql
 BEGIN;
@@ -232,14 +164,29 @@ UPDATE passage SET pid = 'msmarco_passage_00_100000577' WHERE id='9c0f4b37-beb6-
 COMMIT;
 ```
 
+Helper:
+
 ```sql
-SELECT * FROM passage_passage_tsv_terms ORDER BY term; 
 DROP TRIGGER sync_passage_terms ON passage;
 ```
 
+Verify the updated term_stats:
 
 ```sql
 SELECT * FROM passage_passage_tsv_terms ORDER by term;
+```
+
+
+The below is the template for future mass reset of the stats:
+
+```sql
+-- Set the session to READ COMMITTED
+SET SESSION CHARACTERISTICS AS TRANSACTION ISOLATION LEVEL READ COMMITTED;
+BEGIN;
+SELECT 1 FROM passage WHERE 1=1 FOR SHARE;
+-- Run your read-heavy proc here
+COMMIT;
+SET SESSION CHARACTERISTICS AS TRANSACTION ISOLATION LEVEL SERIALIZABLE;
 ```
 
 To select only the rows that need to be "touched" to reset counts:
@@ -259,7 +206,8 @@ Number of documents containing the term.
 Not total term occurrences across corpus.
 One row per distinct term.
 
-3️⃣ corpus_stats
+
+## corpus_stats
 
 Purpose:
 Stores global aggregates needed for scoring.
@@ -268,15 +216,93 @@ Equivalent to:
 self.corpus_size
 
 ```sql
+CREATE INDEX IF NOT EXISTS passage_passage_tsv_id_not_null_idx ON passage(id ASC) WHERE passage_tsv IS NOT NULL;
+```
+
+```sql
 SELECT COUNT(id) FROM passage WHERE passage_tsv IS NOT NULL;
 ```
+
 
 self.avgdl
 
 Meaning:
-total_docs → number of indexed documents.
+total_docs → number of indexed documents (This is length in token)
 avgdl → average document length (in tokens).
 Derived from sum(doc_len) / total_docs.
+
+```sql
+CREATE OR REPLACE FUNCTION get_tsvector_total_occurrences(p_tsv tsvector) 
+RETURNS integer LANGUAGE sql IMMUTABLE AS $$
+    SELECT count(pos)::integer 
+    FROM unnest(p_tsv) AS t(lexeme, positions),
+         unnest(positions) AS pos;
+$$;
+```
+
+```sql
+SELECT count(*) AS doclen
+FROM unnest(
+        string_to_array(
+            (SELECT passage_tsv::text FROM passage LIMIT 1),
+            ' '
+        )
+     ) AS term,
+     unnest(
+        string_to_array(
+            split_part(term, ':', 2),
+            ','
+        )
+     ) AS pos;
+```
+
+
+```sql
+CREATE FUNCTION tsv_doclen(tsv TSVECTOR)
+RETURNS INT
+LANGUAGE SQL
+IMMUTABLE
+AS $$
+    SELECT count(*)
+    FROM unnest(string_to_array(tsv::TEXT, ' ')) AS term,
+         unnest(
+             string_to_array(
+                 split_part(term, ':', 2),
+                 ','
+             )
+         ) AS pos
+$$;
+```
+
+```sql
+SELECT to_tsvector('english', passage)::TEXT FROM passage LIMIT 10;
+```
+
+```sql
+UPDATE passage SET passage_tsv = to_tsvector('english', passage)
+WHERE id IN (SELECT id FROM passage WHERE passage_tsv IS NULL LIMIT 10);
+```
+
+```sql
+BEGIN;
+SET LOCAL bm25.reset = 'true';
+UPDATE passage SET pid = pid
+WHERE id IN (SELECT id FROM passage WHERE passage_tsv IS NULL LIMIT 10);
+COMMIT;
+```
+
+```sql
+SELECT count(id) FROM passage WHERE passage_tsv IS NOT NULL;
+```
+
+```sql
+SELECT sum(passage_tsv_len) FROM passage WHERE passage_tsv IS NOT NULL;
+```
+
+
+```sql
+ALTER TABLE passage ADD COLUMN passage_tsv_len INT;
+```
 
 
 Key distinctions clarified
