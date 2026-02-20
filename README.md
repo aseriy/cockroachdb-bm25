@@ -2,21 +2,18 @@
 
 Yes. In CockroachDB, do it in two steps: **add a STORED computed column**, then **add an inverted index** on that column. ([Cockroach Labs][1])
 
-### 1) Add the computed `TSVECTOR` column
+### 1) Add `passage_tsv TSVECTOR` column
 
 ```sql
 ALTER TABLE passage
 ADD COLUMN passage_tsv TSVECTOR
-AS (to_tsvector('english', passage)) STORED;
 ```
 
-* `STORED` means it’s computed on INSERT/UPDATE and persisted. ([Cockroach Labs][1])
 
 ### 2) Index it (inverted index)
 
 ```sql
-CREATE INVERTED INDEX passage_tsv_idx
-ON nextgenreporting.public.passage (passage_tsv);
+CREATE INVERTED INDEX passage_tsv_idx ON passage (passage_tsv);
 ```
 
 * In CRDB, `CREATE INVERTED INDEX` is the GIN-style index primitive. ([Cockroach Labs][2])
@@ -152,7 +149,7 @@ CREATE TABLE IF NOT EXISTS passage_passage_tsv_terms (
 RESET tracking table:
 
 ```sql
-UPDATE passage_passage_tsv_terms SET freq=0;
+DELETE FROM passage_passage_tsv_terms;
 ```
 
 To test the trigger/term_stats update:
@@ -228,8 +225,18 @@ self.avgdl
 
 Meaning:
 total_docs → number of indexed documents (This is length in token)
+
+```sql
+SELECT count(id) FROM passage WHERE passage_tsv IS NOT NULL;
+```
+
 avgdl → average document length (in tokens).
 Derived from sum(doc_len) / total_docs.
+
+```sql
+SELECT sum(passage_tsv_len) FROM passage WHERE passage_tsv IS NOT NULL;
+```
+
 
 ```sql
 CREATE OR REPLACE FUNCTION get_tsvector_total_occurrences(p_tsv tsvector) 
@@ -291,13 +298,6 @@ WHERE id IN (SELECT id FROM passage WHERE passage_tsv IS NULL LIMIT 10);
 COMMIT;
 ```
 
-```sql
-SELECT count(id) FROM passage WHERE passage_tsv IS NOT NULL;
-```
-
-```sql
-SELECT sum(passage_tsv_len) FROM passage WHERE passage_tsv IS NOT NULL;
-```
 
 
 ```sql
@@ -323,3 +323,20 @@ Distinct term count
 
 
 
+```sql
+UPDATE "passage" AS t
+SET "passage" = t."passage"
+FROM (VALUES 
+  ('0004cdbd-015f-40a7-acf2-dca408d9a772'),
+  ('0004d3a7-10dc-4ab3-aa4b-4521f8bd29fb'),
+  ('0004f6cd-1e71-4b9e-8a4e-2cefbd1be226'),
+  ('0004f9fd-b84f-4622-a51c-a15e52df437c'),
+  ('0004fd5e-e9cf-46f5-9983-5825460c1681'),
+  ('00050524-db3a-4db9-9079-67c77a3db44c'),
+  ('00051bcb-9dbf-4193-9461-809c651ecf1f'),
+  ('00051dec-66fd-4a82-9e88-26b6667d5a8d'),
+  ('0005219a-573b-49ac-b739-b0ca96fa5ddc'),
+  ('00052621-9f6b-4d7d-8101-97e7fc9197fd')
+) AS v("id")
+WHERE t."id" = v."id"::UUID;
+```

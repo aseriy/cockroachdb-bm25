@@ -41,12 +41,31 @@ def shared_db_options(f):
 
 @cli.command(short_help="Reset BM25 stats.")
 @shared_db_options
+@click.option("-w", "--workers", default=1, type=int,
+                help="Number of parallel workders to use (default: 1)")
+@click.option("-b", "--batch-size", default=1000, type=int, help="Rows to process per batch")
+@click.option("-n", "--num-batches", default=1, type=int,
+              help="Number of batches to process before exiting (default: 1)")
+@click.option("-F", "--follow", is_flag=True,
+              help="Keep running: keep vectorizing new NULL rows indefinitely")
+@click.option("--max-idle", default=60.0, type=float,
+              help="Max idle time before exit, in MINUTES (0 = no idle limit)")
+@click.option("--min-idle", default=15.0, type=float,
+              help="Initial idle backoff between empty scans, in SECONDS")
+@click.option("-p", "--progress", is_flag=True, help="Show progress bar")
 def reset(
     url,
     table,
     input_col,
     output_col,
-    verbose
+    workers,
+    batch_size,
+    num_batches,
+    follow,
+    max_idle,
+    min_idle,
+    verbose,
+    progress
 ):
 
     args = {
@@ -54,7 +73,14 @@ def reset(
         "table": table,
         "input": input_col,
         "output": output_col,
-        "verbose": verbose
+        "verbose": verbose,
+        "progress": progress,
+        "workers": workers,
+        "batch_size": batch_size,
+        "num_batches": num_batches,
+        "follow": follow,
+        "max_idle": max_idle,
+        "min_idle": min_idle
     }
 
     # print(json.dumps(args, indent=2))
