@@ -62,27 +62,17 @@ AS $$
   -- We split on spaces to get each token; then split on ':' to separate term and positions.
   -- Positions part may contain weights like 1A,2B,...; strip letters before counting.
   doc_tf AS (
-    SELECT
-      trim(both '''' FROM split_part(tok, ':', 1)) AS term,
-      count(*) AS tf
-    FROM doc,
-         unnest(string_to_array(doc.tsv::TEXT, ' ')) AS tok,
-         unnest(
-             string_to_array(
-                 split_part(tok, ':', 2),
-                 ','
-             )
-         ) AS pos
-    GROUP BY 1
+    SELECT tf.term, tf.freq
+    FROM doc, extract_passage_terms_freq(doc.tsv) AS tf
   )
 
   SELECT
       coalesce(
           sum(
               q.idf * (
-                  (doc_tf.tf::FLOAT * (k1 + 1.0))
+                  (doc_tf.freq::FLOAT * (k1 + 1.0))
                   /
-                  (doc_tf.tf::FLOAT + k1 * (1.0 - b + b * (doc.dl / stats.avgdl)))
+                  (doc_tf.freq::FLOAT + k1 * (1.0 - b + b * (doc.dl / stats.avgdl)))
               )
           ),
           0
@@ -92,5 +82,5 @@ AS $$
       JOIN stats ON true
       LEFT JOIN doc_tf
   ON doc_tf.term = q.term
-  WHERE coalesce(doc_tf.tf, 0) > 0
+  WHERE coalesce(doc_tf.freq, 0) > 0
 $$;

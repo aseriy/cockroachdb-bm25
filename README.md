@@ -471,23 +471,16 @@ FROM (SELECT ARRAY['februari', 'weather']::STRING[] AS terms),
 Now, the candidate documewnts `doc_tf`:
 
 ```sql
-SELECT
-    trim(both '''' FROM split_part(tok, ':', 1)) AS term,
-    count(*)::FLOAT AS tf
-FROM (
-        SELECT
-            passage_tsv AS tsv, passage_tsv_len::FLOAT AS dl
-        FROM passage
-        WHERE id = '0205baa5-3b8b-4e4d-b832-3fd3eb02bb7a'
-    ) AS doc,
-        unnest(string_to_array(doc.tsv::TEXT, ' ')) AS tok,
-        unnest(
-            string_to_array(
-                split_part(tok, ':', 2),
-                ','
-            )
-        ) AS pos
-GROUP BY 1;
+SELECT unnest(
+    extract_passage_terms_freq(
+        (
+            SELECT
+                passage_tsv AS tsv
+            FROM passage
+            WHERE id = '0205baa5-3b8b-4e4d-b832-3fd3eb02bb7a'
+        )
+    ) AS (term, tf)
+);
 ```
 
 ```sql
