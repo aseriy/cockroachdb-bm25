@@ -1,6 +1,6 @@
 import click
 import json
-from operations import run_reset, run_rank
+from operations import run_reset #, run_rank
 
 
 class OperationGroup(click.Group):
@@ -107,7 +107,7 @@ def rank(
     }
 
     # print(json.dumps(args, indent=2))
-    run_rank(args)
+    # run_rank(args)
 
 
 # @cli.command(short_help="Run similarity search")

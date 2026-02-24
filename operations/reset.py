@@ -93,7 +93,7 @@ def batch_touch(
                     SET "{input_column}" = "{input_column}"
                     WHERE "{primary_key}" = ANY(%s)
                 '''
-                print(sql)
+                # print(sql)
                 cur.execute(sql, (pks,))
             conn.commit()
             break
@@ -186,7 +186,7 @@ def run_reset(args):
 
         # Fetch one page of IDs (no wait on start or after successful work)
         pks = fetch_null_output_pks(conn_pool, args['table'], args['output'], primary_key, args['batch_size'])
-        print(json.dumps(pks, indent=2))
+        # print(json.dumps(pks, indent=2))
 
         chunk_size = int(0.5 + len(pks) / args['workers'])
         print(f"chunk_size: {chunk_size}")

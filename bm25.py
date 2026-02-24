@@ -11,6 +11,28 @@ Trotmam et al, Improvements to BM25 and Language Models Examined
 Here we implement all the BM25 variations mentioned. 
 """
 
+# TODO:
+    # The parent BM25 class mainly exists to:
+    # Build doc_freqs
+    # Build doc_len
+    # Compute corpus_size
+    # Compute avgdl
+    # Build the full idf map
+    # Since DB database already persists:
+    #   doc_len
+    #   df per term
+    #   corpus_size
+    #   avgdl
+    # You do not need:
+    #   _initialize()
+    #   self.doc_freqs
+    #   self.idf as a full in-memory map
+    # If scoring is DB-driven, you can reduce this to:
+    # A stateless scorer that:
+    # Accepts query terms
+    # Pulls df for those terms
+    # Uses provided doc_len, avgdl, N
+    # Computes IDF on demand
 
 class BM25:
     def __init__(self, corpus, tokenizer=None):
@@ -76,34 +98,53 @@ class BM25:
         return [documents[i] for i in top_n]
 
 
-class BM25Okapi(BM25):
+
+
+
+class BM25Okapi:
     def __init__(self, corpus, tokenizer=None, k1=1.5, b=0.75, epsilon=0.25):
         self.k1 = k1
         self.b = b
         self.epsilon = epsilon
         super().__init__(corpus, tokenizer)
 
-    def _calc_idf(self, nd):
-        """
-        Calculates frequencies of terms in documents and in corpus.
-        This algorithm sets a floor on the idf values to eps * average_idf
-        """
-        # collect idf sum to calculate an average idf for epsilon value
-        idf_sum = 0
-        # collect words with negative idf to set them a special epsilon value.
-        # idf can be negative if word is contained in more than half of documents
-        negative_idfs = []
-        for word, freq in nd.items():
-            idf = math.log(self.corpus_size - freq + 0.5) - math.log(freq + 0.5)
-            self.idf[word] = idf
+    # def _calc_idf(self, nd):
+    #     """
+    #     Calculates frequencies of terms in documents and in corpus.
+    #     This algorithm sets a floor on the idf values to eps * average_idf
+    #     """
+    #     # collect idf sum to calculate an average idf for epsilon value
+    #     idf_sum = 0
+    #     # collect words with negative idf to set them a special epsilon value.
+    #     # idf can be negative if word is contained in more than half of documents
+    #     negative_idfs = []
+    #     for word, freq in nd.items():
+    #         idf = math.log(self.corpus_size - freq + 0.5) - math.log(freq + 0.5)
+    #         self.idf[word] = idf
+    #         idf_sum += idf
+    #         if idf < 0:
+    #             negative_idfs.append(word)
+    #     self.average_idf = idf_sum / len(self.idf)
+
+    #     eps = self.epsilon * self.average_idf
+    #     for word in negative_idfs:
+    #         self.idf[word] = eps
+
+
+    def _calc_idf(self, term):
+        # freq = (SELECT freq FROM passage_passage_tsv_terms WHERE term = q;)
+
+        idf = math.log(self.corpus_size - freq + 0.5) - math.log(freq + 0.5)
+            # self.idf[word] = idf
             idf_sum += idf
             if idf < 0:
                 negative_idfs.append(word)
-        self.average_idf = idf_sum / len(self.idf)
 
-        eps = self.epsilon * self.average_idf
-        for word in negative_idfs:
-            self.idf[word] = eps
+
+    # TODO: query should be text but then converted to a TSVECTOR:
+    #       "The weather is extremely unpredictable in February."
+    #       SELECT to_tsvector('english', 'The weather is extremely unpredictable in February.');
+    #       TSVECTOR: 'extrem':4 'februari':7 'unpredict':5 'weather':2
 
     def get_scores(self, query):
         """
@@ -115,10 +156,19 @@ class BM25Okapi(BM25):
         """
         score = np.zeros(self.corpus_size)
         doc_len = np.array(self.doc_len)
+
         for q in query:
+            # TODO: For each term in the query (tsvector), get frequency.
+            #       Here, it iterates over a list only because of how it was structure before.
+            #       Now with the DB:
+            # SELECT freq FROM passage_passage_tsv_terms WHERE term = q;
             q_freq = np.array([(doc.get(q) or 0) for doc in self.doc_freqs])
+
+            # IDF needs to be calculated here on the fly for the specific term "q" or 0
+
             score += (self.idf.get(q) or 0) * (q_freq * (self.k1 + 1) /
                                                (q_freq + self.k1 * (1 - self.b + self.b * doc_len / self.avgdl)))
+
         return score
 
     def get_batch_scores(self, query, doc_ids):
@@ -135,7 +185,7 @@ class BM25Okapi(BM25):
         return score.tolist()
 
 
-class BM25L(BM25):
+class BM25L:
     def __init__(self, corpus, tokenizer=None, k1=1.5, b=0.75, delta=0.5):
         # Algorithm specific parameters
         self.k1 = k1
@@ -173,26 +223,38 @@ class BM25L(BM25):
         return score.tolist()
 
 
-class BM25Plus(BM25):
+class BM25Plus:
     def __init__(self, corpus, tokenizer=None, k1=1.5, b=0.75, delta=1):
         # Algorithm specific parameters
         self.k1 = k1
         self.b = b
         self.delta = delta
+        # This is now happening in the DB
+        # Only needs to be pulled fromt the DB
         super().__init__(corpus, tokenizer)
 
+    # def _calc_idf(self, nd):
+    #     for word, freq in nd.items():
+    #         idf = math.log(self.corpus_size + 1) - math.log(freq)
+    #         self.idf[word] = idf
+
     def _calc_idf(self, nd):
-        for word, freq in nd.items():
-            idf = math.log(self.corpus_size + 1) - math.log(freq)
-            self.idf[word] = idf
+        return None
+
+
+
 
     def get_scores(self, query):
         score = np.zeros(self.corpus_size)
         doc_len = np.array(self.doc_len)
         for q in query:
+
             q_freq = np.array([(doc.get(q) or 0) for doc in self.doc_freqs])
+
+
             score += (self.idf.get(q) or 0) * (self.delta + (q_freq * (self.k1 + 1)) /
                                                (self.k1 * (1 - self.b + self.b * doc_len / self.avgdl) + q_freq))
+        
         return score
 
     def get_batch_scores(self, query, doc_ids):
