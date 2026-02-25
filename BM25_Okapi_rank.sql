@@ -37,24 +37,19 @@ AS $$
     WHERE passage_tsv IS NOT NULL
   ),
 
-  -- Unique query terms extracted from query::tsvector
-  q_terms AS (
-    SELECT extract_passage_terms(to_tsvector(query)) AS term
-  ),
-
   -- Put terms into an array (needed for BM25_Okapi_IDF)
   q_arr AS (
     SELECT array_agg(term) AS terms
-    FROM q_terms
+    FROM (SELECT extract_passage_terms(to_tsvector(query)) AS term)
   ),
 
   q AS (
-    SELECT t.term, t.ord, t.idf::FLOAT
+    SELECT t.term, t.idf::FLOAT
     FROM q_arr,
         unnest(
           coalesce(q_arr.terms, ARRAY[]::STRING[]), 
           coalesce(BM25_Okapi_IDF(q_arr.terms), ARRAY[]::FLOAT[])
-        ) WITH ORDINALITY AS t(term, idf, ord)
+        ) AS t(term, idf)
   ),
 
   -- Parse document tsvector text into per-term tf by counting positions.
