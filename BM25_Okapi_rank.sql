@@ -15,7 +15,7 @@ CREATE OR REPLACE FUNCTION BM25_Okapi_rank(
   k1 FLOAT,
   b FLOAT
 )
-RETURNS FLOAT
+RETURNS TABLE(pk UUID, score FLOAT)
 LANGUAGE SQL
 
 AS $$
@@ -62,6 +62,7 @@ AS $$
   )
 
   SELECT
+      pk,
       coalesce(
           sum(
               q.idf * (
