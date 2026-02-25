@@ -471,16 +471,14 @@ FROM (SELECT ARRAY['februari', 'weather']::STRING[] AS terms),
 Now, the candidate documewnts `doc_tf`:
 
 ```sql
-SELECT unnest(
-    extract_passage_terms_freq(
+SELECT term, tf FROM extract_passage_terms_freq(
         (
             SELECT
                 passage_tsv AS tsv
             FROM passage
             WHERE id = '0205baa5-3b8b-4e4d-b832-3fd3eb02bb7a'
         )
-    ) AS (term, tf)
-);
+    );
 ```
 
 ```sql
@@ -568,4 +566,16 @@ SELECT BM25_Okapi_rank(
     'february weather',
     1.2, 0.75
 ) AS rank;
+```
+
+```sql
+SELECT * FROM BM25_Okapi_rank(
+    'february weather',
+    1.2, 0.75
+);
+```
+
+
+```sql
+SELECT * FROM BM25_candidates('february weather', 10);
 ```

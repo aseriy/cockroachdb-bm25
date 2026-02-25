@@ -10,7 +10,6 @@
 --   BM25_Okapi_rank(pk UUID, query STRING, k1 FLOAT, b FLOAT) -> FLOAT
 
 CREATE OR REPLACE FUNCTION BM25_Okapi_rank(
-  pk UUID,
   query STRING,
   k1 FLOAT,
   b FLOAT
@@ -20,12 +19,9 @@ LANGUAGE SQL
 
 AS $$
   WITH
-  -- Fetch the document (pk) vector and length
-  doc AS (
-    SELECT
-      passage_tsv AS tsv, passage_tsv_len::FLOAT AS dl
-    FROM passage
-    WHERE id = pk
+  candidates AS (
+    SELECT id
+    FROM BM25_candidates(query, 10)
   ),
 
   -- Corpus stats
@@ -52,31 +48,37 @@ AS $$
         ) AS t(term, idf)
   ),
 
-  -- Parse document tsvector text into per-term tf by counting positions.
-  -- tsv::text looks like:  'term':1,5,9 'other':2 ...
-  -- We split on spaces to get each token; then split on ':' to separate term and positions.
-  -- Positions part may contain weights like 1A,2B,...; strip letters before counting.
-  doc_tf AS (
-    SELECT tf.term, tf.freq
-    FROM doc, extract_passage_terms_freq(doc.tsv) AS tf
+  -- Fetch document data for ALL candidates (the "Loop")
+  docs AS (
+    SELECT
+      p.id AS doc_pk, p.passage_tsv AS tsv, p.passage_tsv_len::FLOAT AS dl
+    FROM passage AS p
+    INNER JOIN candidates c ON p.id = c.id -- This creates the iteration
+  ),
+
+  -- Term frequencies for all candidates
+  docs_tf AS (
+    SELECT d.doc_pk, tf.term, tf.freq
+    FROM docs AS d, extract_passage_terms_freq(d.tsv) AS tf
   )
 
+  -- Final Calculation grouped by each candidate ID
   SELECT
-      pk,
+      d.doc_pk AS pk,
       coalesce(
           sum(
               q.idf * (
-                  (doc_tf.freq::FLOAT * (k1 + 1.0))
+                  (dtf.freq::FLOAT * (k1 + 1.0))
                   /
-                  (doc_tf.freq::FLOAT + k1 * (1.0 - b + b * (doc.dl / stats.avgdl)))
+                  (dtf.freq::FLOAT + k1 * (1.0 - b + b * (d.dl / stats.avgdl)))
               )
           ),
           0
-      )
-  FROM q
-      JOIN doc ON true
-      JOIN stats ON true
-      LEFT JOIN doc_tf
-  ON doc_tf.term = q.term
-  WHERE coalesce(doc_tf.freq, 0) > 0
+      ) AS score
+  FROM docs AS d
+      CROSS JOIN stats
+      CROSS JOIN q
+      LEFT JOIN docs_tf AS dtf ON dtf.doc_pk = d.doc_pk AND dtf.term = q.term
+  GROUP BY d.doc_pk
+  ORDER BY score DESC
 $$;
