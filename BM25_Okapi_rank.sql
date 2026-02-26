@@ -11,6 +11,7 @@
 
 CREATE OR REPLACE FUNCTION BM25_Okapi_rank(
   query STRING,
+  limit_n INT,
   k1 FLOAT,
   b FLOAT
 )
@@ -21,7 +22,7 @@ AS $$
   WITH
   candidates AS (
     SELECT id
-    FROM BM25_candidates(query, 10)
+    FROM BM25_candidates(query, limit_n)
   ),
 
   -- Corpus stats
@@ -82,3 +83,19 @@ AS $$
   GROUP BY d.doc_pk
   ORDER BY score DESC
 $$;
+
+
+CREATE OR REPLACE FUNCTION BM25_Okapi_rank(
+  query STRING,
+  limit_n INT
+)
+RETURNS TABLE(pk UUID, score FLOAT)
+LANGUAGE SQL
+AS $$
+
+    -- Simply passes through to the 4-arg version with your chosen defaults
+    SELECT * FROM BM25_Okapi_rank(query, limit_n, 1.2, 0.75);
+
+$$;
+
+

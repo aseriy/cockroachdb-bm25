@@ -373,204 +373,11 @@ ln((N - df + 0.5) / (df + 0.5))
 
 
 
-# Debugging `BM25_Okapi_rank()`
-
-```sql
-SELECT id
-FROM passage
-WHERE passage_tsv @@ plainto_tsquery('english', 'february weather')
-LIMIT 10;
-```
-
-```sql
-                   id
-----------------------------------------
-  0205baa5-3b8b-4e4d-b832-3fd3eb02bb7a
-  027c5538-3ff2-4156-bf96-a130d2a13282
-  05604524-bfad-405f-8033-8e4269ecb36c
-  097943c7-cee0-41ad-9591-c035e53439c0
-  099a55f0-c370-469d-8867-62ddc3938204
-  0c51ec83-535a-4338-90bb-89f27c821210
-  12d1d285-3275-4c71-b6d9-e027e115dc76
-  134b1931-da4b-4eb1-922d-1e2d5a746e83
-  1355a719-a49e-4a78-a191-f8f6fa1e63a4
-  15504cf5-bf78-475b-978d-fc961beeb2ed
-(10 rows)
-```
-
-This is the candidate document `doc`:
-
-```sql
-SELECT
-    passage_tsv AS tsv, passage_tsv_len::FLOAT AS dl
-FROM passage
-WHERE id = '0205baa5-3b8b-4e4d-b832-3fd3eb02bb7a';
-```
-
-```sql
-      tsv                                                                                                                                                     | dl
---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------+-----
-  '3':26 '4':27 'assur':50 'best':52 'caus':34 'chanc':53 'day':28 'decemb':42 'delay':36 'even':9 'expect':24 'fair':47 'februari':43 'flyer':2 'freez':21 'make':16 'nocturn':4 'rain':19 'releas':6,31,37 'rememb':1 'sure':17 'surviv':55 'temperatur':22 'usual':11 'wait':45 'watch':12 'weather':14,48 | 30
-(1 row)
-```
-
-Corpus `stats`:
-
-```sql
-SELECT
-    count(*) AS n,
-    avg(passage_tsv_len) AS avgdl
-FROM passage
-WHERE passage_tsv IS NOT NULL;
-```
-
-```sql
-     n    |         avgdl
-----------+------------------------
-  1476385 | 29.050345946348682762
-(1 row)
-```
-
-```sql
-SELECT extract_passage_terms(to_tsvector('february weather'));
-```
-
-```sql
-  extract_passage_terms
--------------------------
-  februari
-  weather
-(2 rows)
-```
-
-```sql
-SELECT array_agg(term) AS terms
-FROM unnest(ARRAY['februari', 'weather']) AS term;
-```
-
-
-```sql
-SELECT t.term, t.ord, t.idf::FLOAT
-FROM (SELECT ARRAY['februari', 'weather']::STRING[] AS terms),
-    unnest(
-        coalesce(ARRAY['februari', 'weather']::STRING[], ARRAY[]::STRING[]), 
-        coalesce(BM25_Okapi_IDF(ARRAY['februari', 'weather']::STRING[]), ARRAY[]::FLOAT[])
-    ) WITH ORDINALITY AS t(term, idf, ord);
-```
-
-`q` is now:
-
-```sql
-    term   | ord |        idf
------------+-----+--------------------
-  februari |   1 | 5.327838513858024
-  weather  |   2 | 5.482578050454234
-(2 rows)
-```
-
-Now, the candidate documewnts `doc_tf`:
-
-```sql
-SELECT term, tf FROM extract_passage_terms_freq(
-        (
-            SELECT
-                passage_tsv AS tsv
-            FROM passage
-            WHERE id = '0205baa5-3b8b-4e4d-b832-3fd3eb02bb7a'
-        )
-    );
-```
-
-```sql
-     term    | tf
--------------+-----
-  3          |  1
-  4          |  1
-  assur      |  1
-  best       |  1
-  caus       |  1
-  chanc      |  1
-  day        |  1
-  decemb     |  1
-  delay      |  1
-  even       |  1
-  expect     |  1
-  fair       |  1
-  februari   |  1
-  flyer      |  1
-  freez      |  1
-  make       |  1
-  nocturn    |  1
-  rain       |  1
-  releas     |  3
-  rememb     |  1
-  sure       |  1
-  surviv     |  1
-  temperatur |  1
-  usual      |  1
-  wait       |  1
-  watch      |  1
-  weather    |  2
-(27 rows)
-```
-
-Finally:
-
-```sql
-SELECT
-    coalesce(
-        sum(
-            q.idf * (
-                (doc_tf.tf::FLOAT * (1.2::FLOAT + 1.0))
-                /
-                (doc_tf.tf::FLOAT + 1.2::FLOAT * (1.0 - 0.75::FLOAT + 0.75::FLOAT * (doc.dl / stats.avgdl::FLOAT)))
-            )
-        ),
-        0
-    ) AS rank
-FROM (
-        VALUES 
-            ('februari', 1, 5.327838513858024::FLOAT),
-            ('weather', 2, 5.482578050454234::FLOAT)
-    ) AS q(term, ord, idf)
-JOIN (
-    SELECT
-        passage_tsv AS tsv, passage_tsv_len::FLOAT AS dl
-    FROM passage
-    WHERE id = '0205baa5-3b8b-4e4d-b832-3fd3eb02bb7a'
-) AS doc ON true
-JOIN (
-    VALUES
-        (1476385, 29.050345946348682762::FLOAT)
-) AS stats(n,avgdl) ON true
-LEFT JOIN (
-    VALUES 
-        ('3', 1), ('4', 1), ('assur', 1), ('best', 1), ('caus', 1), 
-        ('chanc', 1), ('day', 1), ('decemb', 1), ('delay', 1), ('even', 1), 
-        ('expect', 1), ('fair', 1), ('februari', 1), ('flyer', 1), ('freez', 1), 
-        ('make', 1), ('nocturn', 1), ('rain', 1), ('releas', 3), ('rememb', 1), 
-        ('sure', 1), ('surviv', 1), ('temperatur', 1), ('usual', 1), ('wait', 1), 
-        ('watch', 1), ('weather', 2)
-) AS doc_tf(term, tf)
-ON doc_tf.term = q.term
-WHERE coalesce(doc_tf.tf, 0) > 0;
-```
-
-
-
-The final stored function:
-
-```sql
-SELECT BM25_Okapi_rank(
-    '0205baa5-3b8b-4e4d-b832-3fd3eb02bb7a',
-    'february weather',
-    1.2, 0.75
-) AS rank;
-```
 
 ```sql
 SELECT * FROM BM25_Okapi_rank(
     'february weather',
+    10,
     1.2, 0.75
 );
 ```
@@ -578,4 +385,40 @@ SELECT * FROM BM25_Okapi_rank(
 
 ```sql
 SELECT * FROM BM25_candidates('february weather', 10);
+```
+
+
+```sql
+SELECT passage FROM passage
+    WHERE id in (
+        (SELECT pk FROM BM25_Okapi_rank(
+            'why not diesel cars',
+            10, 1.2, 0.75
+        ))
+    );
+```
+
+```sql
+SELECT r.score, p.passage
+FROM passage AS p
+INNER JOIN (
+    SELECT pk, score 
+    FROM BM25_Okapi_rank(
+        'why not diesel cars'
+        , 10, 1.2, 0.75)
+) AS r ON p.id = r.pk
+ORDER BY r.score DESC;
+```
+
+```sql
+SELECT r.score, p.passage
+FROM passage AS p
+INNER JOIN (
+    SELECT pk, score
+    FROM BM25_Okapi_rank(
+        'why not diesel cars',
+        20
+    )
+) AS r ON p.id = r.pk
+ORDER BY r.score DESC;
 ```
