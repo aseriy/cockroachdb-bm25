@@ -422,3 +422,41 @@ INNER JOIN (
 ) AS r ON p.id = r.pk
 ORDER BY r.score DESC;
 ```
+
+
+
+# Corpus Tracking
+
+```sql
+CREATE TABLE IF NOT EXISTS _tsv_corpus (
+    table_name STRING,
+    column_name STRING,
+    n INT NOT NULL DEFAULT 0,
+    total INT NOT NULL DEFAULT 0,
+    avgdl FLOAT AS (
+        CASE
+            WHEN n = 0 THEN NULL
+            ELSE total::FLOAT / n::FLOAT
+        END
+    ) STORED,
+    PRIMARY KEY (table_name, column_name)
+);
+```
+
+
+```sql
+INSERT INTO _tsv_corpus (table_name,column_name,n,total) VALUES (
+    'passage',
+    'passage',
+    (SELECT count(*) FROM passage WHERE passage_tsv IS NOT NULL),
+    (SELECT sum(passage_tsv_len) FROM passage WHERE passage_tsv IS NOT NULL)
+);
+```
+
+```sql
+UPDATE _tsv_corpus SET
+    n = (SELECT count(*) FROM passage WHERE passage_tsv IS NOT NULL),
+    total = (SELECT sum(passage_tsv_len) FROM passage WHERE passage_tsv IS NOT NULL)
+WHERE table_name ='passage' AND column_name = 'passage'
+;
+```

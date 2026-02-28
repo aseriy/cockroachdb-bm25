@@ -27,11 +27,9 @@ AS $$
 
   -- Corpus stats
   stats AS (
-    SELECT
-      count(*) AS n,
-      avg(passage_tsv_len)::FLOAT AS avgdl
-    FROM passage
-    WHERE passage_tsv IS NOT NULL
+    SELECT n::FLOAT, avgdl
+    FROM _tsv_corpus
+    WHERE table_name ='passage' AND column_name = 'passage'
   ),
 
   -- Put terms into an array (needed for BM25_Okapi_IDF)

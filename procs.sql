@@ -72,20 +72,30 @@ BEGIN
         NEW.passage_tsv_len := tsv_doclen((NEW).passage_tsv);
         v_return := NEW;
 
+        -- Increments term counters
         INSERT INTO passage_passage_tsv_terms (term, freq)
         SELECT term, 1
         FROM extract_passage_terms((NEW).passage_tsv) AS term
         ON CONFLICT (term)
         DO UPDATE SET freq = passage_passage_tsv_terms.freq + 1;
 
+        -- Increment corpus stats
+        UPDATE _tsv_corpus
+            SET n = n + 1, total = total + (NEW).passage_tsv_len
+            WHERE table_name ='passage' AND column_name = 'passage';
+
+
 
     ELSIF TG_OP = 'DELETE' THEN
         v_return := OLD;
 
+        -- Decrement term counters
         UPDATE passage_passage_tsv_terms AS t
         SET freq = t.freq - 1
         FROM extract_passage_terms((OLD).passage_tsv) AS term
         WHERE t.term = term.term;
+
+        -- Decrement corpus stats
 
 
     ELSIF TG_OP = 'UPDATE' THEN
@@ -115,6 +125,11 @@ BEGIN
         ) AS added
         ON CONFLICT (term)
         DO UPDATE SET freq = passage_passage_tsv_terms.freq + 1;
+
+        -- Update corpus stats
+        -- This doesn't change the document count (N)
+        -- but we need to update total document size
+        -- with the net change of this document length
 
     ELSE
         SELECT 1;
