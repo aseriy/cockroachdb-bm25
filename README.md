@@ -345,7 +345,7 @@ WHERE t."id" = v."id"::UUID;
 
 
 
-# spiration
+# Inspiration
 
 ```sql
 SELECT id,
@@ -457,6 +457,34 @@ INSERT INTO _tsv_corpus (table_name,column_name,n,total) VALUES (
 UPDATE _tsv_corpus SET
     n = (SELECT count(*) FROM passage WHERE passage_tsv IS NOT NULL),
     total = (SELECT sum(passage_tsv_len) FROM passage WHERE passage_tsv IS NOT NULL)
-WHERE table_name ='passage' AND column_name = 'passage'
-;
+WHERE table_name ='passage' AND column_name = 'passage';
 ```
+
+
+
+# Test corpus stats for DELETE and UPDATE
+
+```sql
+INSERT INTO passage (pid, passage, spans, docid) VALUES (
+    'msmarco_passage_XX_000000000',
+    'Some text to be deleted later',
+    '(73,88),(89,108),(109,130),(131,149),(150,171),(172,195),(196,215),(216,234),(235,309)',
+    'msmarco_doc_YY_zzzzzzzzzzz'
+);
+```
+
+```sql
+SELECT * FROM passage WHERE pid = 'msmarco_passage_XX_000000000';
+```
+
+```sql
+UPDATE passage SET passage = 
+    'Now that RKO is behind us and we’re ready to crush FY27, your FY27 comp documents are now in your inbox. Please review the following important notes:'
+    WHERE pid = 'msmarco_passage_XX_000000000';
+```
+
+
+```sql
+DELETE FROM passage WHERE pid = 'msmarco_passage_XX_000000000';
+```
+

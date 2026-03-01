@@ -96,6 +96,9 @@ BEGIN
         WHERE t.term = term.term;
 
         -- Decrement corpus stats
+        UPDATE _tsv_corpus
+            SET n = n - 1, total = total - (OLD).passage_tsv_len
+            WHERE table_name ='passage' AND column_name = 'passage';
 
 
     ELSIF TG_OP = 'UPDATE' THEN
@@ -130,6 +133,10 @@ BEGIN
         -- This doesn't change the document count (N)
         -- but we need to update total document size
         -- with the net change of this document length
+        UPDATE _tsv_corpus
+            SET total = total + ((NEW).passage_tsv_len - (OLD).passage_tsv_len)
+            WHERE table_name ='passage' AND column_name = 'passage';
+
 
     ELSE
         SELECT 1;
