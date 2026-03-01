@@ -548,3 +548,10 @@ UPDATE passage SET passage =
 DELETE FROM passage WHERE pid = 'msmarco_passage_XX_000000000';
 ```
 
+
+
+
+```sql
+SELECT extract_passage_terms((SELECT passage_tsv FROM passage WHERE passage_tsv IS NOT NULL LIMIT 1));
+SELECT unnest(extract_passage_terms_freq((SELECT passage_tsv FROM passage WHERE passage_tsv IS NOT NULL LIMIT 1))) AS tf;
+```

@@ -1,55 +1,3 @@
-CREATE OR REPLACE FUNCTION extract_passage_terms(tsv tsvector)
-RETURNS TABLE(term text)
-LANGUAGE SQL
-IMMUTABLE
-AS $$
-    SELECT
-        trim(both '''' FROM split_part(token, ':', 1)) AS term
-    FROM unnest(string_to_array(tsv::TEXT, ' ')) AS token;
-$$;
-
-
-SELECT extract_passage_terms((SELECT passage_tsv FROM passage WHERE passage_tsv IS NOT NULL LIMIT 1));
-
-
-CREATE OR REPLACE FUNCTION extract_passage_terms_freq(tsv tsvector)
-RETURNS TABLE(term text, freq INT)
-LANGUAGE SQL
-IMMUTABLE
-AS $$
-    SELECT
-      trim(both '''' FROM split_part(tok, ':', 1)) AS term,
-      count(*) AS tf
-    FROM
-        unnest(string_to_array(tsv::TEXT, ' ')) AS tok,
-        unnest(
-            string_to_array(
-                split_part(tok, ':', 2),
-                ','
-            )
-        ) AS pos
-    GROUP BY 1
-$$;
-
-SELECT unnest(extract_passage_terms_freq((SELECT passage_tsv FROM passage WHERE passage_tsv IS NOT NULL LIMIT 1))) AS tf;
-
-
-CREATE OR REPLACE FUNCTION tsv_doclen(tsv TSVECTOR)
-RETURNS INT
-LANGUAGE SQL
-IMMUTABLE
-AS $$
-    SELECT count(*)
-    FROM unnest(string_to_array(tsv::TEXT, ' ')) AS term,
-         unnest(
-             string_to_array(
-                 split_part(term, ':', 2),
-                 ','
-             )
-         ) AS pos
-$$;
-
-
 CREATE OR REPLACE FUNCTION passage_passage_tsv_terms_sync()
 RETURNS trigger
 LANGUAGE plpgsql
@@ -84,8 +32,6 @@ BEGIN
             SET n = n + 1, total = total + (NEW).passage_tsv_len
             WHERE table_name ='passage' AND column_name = 'passage';
 
-
-
     ELSIF TG_OP = 'DELETE' THEN
         v_return := OLD;
 
@@ -99,7 +45,6 @@ BEGIN
         UPDATE _tsv_corpus
             SET n = n - 1, total = total - (OLD).passage_tsv_len
             WHERE table_name ='passage' AND column_name = 'passage';
-
 
     ELSIF TG_OP = 'UPDATE' THEN
 
@@ -137,7 +82,6 @@ BEGIN
             SET total = total + ((NEW).passage_tsv_len - (OLD).passage_tsv_len)
             WHERE table_name ='passage' AND column_name = 'passage';
 
-
     ELSE
         SELECT 1;
 
@@ -153,7 +97,4 @@ CREATE TRIGGER sync_passage_terms
     BEFORE INSERT OR UPDATE OR DELETE ON passage
     FOR EACH ROW
     EXECUTE FUNCTION passage_passage_tsv_terms_sync();
-
-
-
 
