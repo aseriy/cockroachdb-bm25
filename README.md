@@ -474,7 +474,67 @@ INSERT INTO passage (pid, passage, spans, docid) VALUES (
 ```
 
 ```sql
+SELECT to_tsvector('Some text to be deleted later');
+```
+
+```sql
+          to_tsvector
+--------------------------------
+  'delet':5 'later':6 'text':2
+```
+
+```sql
+SELECT * FROM passage_passage_tsv_terms
+WHERE term IN ('delet', 'later', 'text');
+```
+
+```sql
+  term  | freq
+--------+--------
+  later | 27587
+  text  | 15688
+  delet |  4888
+
+  term  | freq
+--------+--------
+  later | 27588
+  text  | 15689
+  delet |  4889
+```
+
+```sql
 SELECT * FROM passage WHERE pid = 'msmarco_passage_XX_000000000';
+```
+
+```sql
+SELECT to_tsvector('Now that RKO is behind us and we’re ready to crush FY27, your FY27 comp documents are now in your inbox. Please review the following important notes:');
+```
+
+```sql
+                                                                            to_tsvector
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------
+  'behind':5 'comp':16 'crush':12 'document':17 'follow':26 'fy27':13,15 'import':27 'inbox':22 'note':28 'pleas':23 're':9 'readi':10 'review':24 'rko':3 'us':6
+```
+
+```sql
+SELECT * FROM passage_passage_tsv_terms
+WHERE term IN (
+    'behind', 'comp', 'crush', 'document', 'follow', 'fy27', 'import', 'inbox',
+    'note', 'pleas', 're', 'readi', 'review', 'rko', 'us');
+```
+
+```sql
+  term  | freq
+--------+--------
+  later | 27587
+  text  | 15688
+  delet |  4888
+
+  term  | freq
+--------+--------
+  later | 27588
+  text  | 15689
+  delet |  4889
 ```
 
 ```sql
