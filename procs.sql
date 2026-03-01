@@ -60,11 +60,11 @@ DECLARE
     v_return passage := NULL;
 
 BEGIN
-    RAISE NOTICE 'Trigger fired for operation: %', TG_OP;
+    -- RAISE NOTICE 'Trigger fired for operation: %', TG_OP;
 
     -- Session-level flag
     v_reset := coalesce(current_setting('bm25.reset', true), 'false') = 'true';
-    RAISE NOTICE 'v_reset: %', v_reset;
+    -- RAISE NOTICE 'v_reset: %', v_reset;
 
     IF TG_OP = 'INSERT' OR TG_OP = 'UPDATE' AND v_reset THEN
 
