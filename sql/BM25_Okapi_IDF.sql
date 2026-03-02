@@ -24,8 +24,10 @@ AS $$
     ORDER BY it.ord -- Ensure the output array matches the input order
   )
   FROM n, input_terms AS it
-  LEFT JOIN passage_passage_tsv_terms AS tf
+  LEFT JOIN _tsv_terms AS tf
     ON tf.term = it.term
+    AND tf.table_name = 'passage' 
+    AND tf.column_name = 'passage'
 $$;
 
 -- SELECT BM25_Okapi_IDF(ARRAY['apple', 'banana', 'cherry']) AS idf;

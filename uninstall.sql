@@ -1,5 +1,5 @@
-DROP TRIGGER IF EXISTS sync_passage_terms ON passage;
-DROP FUNCTION IF EXISTS passage_passage_tsv_terms_sync();
+DROP TRIGGER IF EXISTS bm25_sync ON passage;
+DROP FUNCTION IF EXISTS bm25_sync();
 
 
 DROP FUNCTION IF EXISTS BM25_Okapi_rank(STRING,INT);

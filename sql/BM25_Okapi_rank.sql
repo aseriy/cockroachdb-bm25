@@ -3,7 +3,7 @@
 -- Assumptions (per spec):
 --  - passage(pk) exists and has non-NULL passage_tsv and passage_tsv_len.
 --  - query is treated as a set of unique terms (duplicates ignored).
---  - IDF is obtained from BM25_Okapi_IDF(STRING[]) which uses corpus DF in passage_passage_tsv_terms.
+--  - IDF is obtained from BM25_Okapi_IDF(STRING[]) which uses corpus DF in _tsv_terms.
 --  - avgdl and corpus size are computed from passage where passage_tsv is not NULL.
 --
 -- Signature:

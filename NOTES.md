@@ -36,91 +36,6 @@ LIMIT 10;
 
 
 
-
-Everything _initialize() computes can be expressed as:
-
-Per-document term frequency
-
-Per-document length
-
-Term → document frequency
-
-Corpus size
-
-Average document length
-
-All of that can live in relational tables and be maintained incrementally.
-
-If you design:
-
-doc_stats(id, doc_len)
-
-term_stats(term, doc_freq)
-
-corpus_stats(total_docs, avgdl)
-
-Then:
-
-On INSERT:
-
-Extract lexemes from passage_tsv
-
-Update doc_stats
-
-Increment term_stats for distinct terms
-
-Increment corpus counters
-
-On UPDATE:
-
-Diff old vs new lexemes
-
-Adjust stats
-
-On DELETE:
-
-Decrement accordingly
-
-That logic can absolutely live in:
-
-A stored procedure
-
-Or trigger-invoked procedure
-
-Or lightweight CDC consumer writing back into the same cluster
-
-You’re correct: this is cleaner than rebuilding corpus state in Python.
-
-What remains in Python (or Go, ideally) would just be:
-
-Fetch candidate doc IDs
-
-Fetch TF, IDF, doc_len
-
-Apply scoring formula
-
-Sort top-K
-
-That separation is much more production-aligned:
-
-Database → state + stats
-Application → ranking math
-
-And yes — doing the stats incrementally prevents the “full corpus rebuild” noise.
-
-The main engineering challenges will be:
-
-Handling hot terms
-
-Efficient diffing on UPDATE
-
-Avoiding write amplification
-
-But architecturally, your direction is coherent.
-
-
-
-
 Mapping BM25 internals to DB structures
 
 ## doc_stats
@@ -142,8 +57,7 @@ Purpose: Stores document frequency per term.
 ```sql
 CREATE TABLE IF NOT EXISTS passage_passage_tsv_terms (
     term STRING PRIMARY KEY USING HASH WITH (bucket_count=16),
-    freq INT,
-    idf_bm25okapi FLOAT8
+    freq INT DEFAULT 0
 );
 ```
 
@@ -484,8 +398,9 @@ SELECT to_tsvector('Some text to be deleted later');
 ```
 
 ```sql
-SELECT * FROM passage_passage_tsv_terms
-WHERE term IN ('delet', 'later', 'text');
+SELECT * FROM _tsv_terms
+WHERE term IN ('delet', 'later', 'text')
+AND table_name='passage' AND column_name='passage';
 ```
 
 ```sql
@@ -517,10 +432,11 @@ SELECT to_tsvector('Now that RKO is behind us and we’re ready to crush FY27, y
 ```
 
 ```sql
-SELECT * FROM passage_passage_tsv_terms
+SELECT * FROM _tsv_terms
 WHERE term IN (
     'behind', 'comp', 'crush', 'document', 'follow', 'fy27', 'import', 'inbox',
-    'note', 'pleas', 're', 'readi', 'review', 'rko', 'us');
+    'note', 'pleas', 're', 'readi', 'review', 'rko', 'us')
+AND table_name='passage' AND column_name='passage';
 ```
 
 ```sql
@@ -554,4 +470,30 @@ DELETE FROM passage WHERE pid = 'msmarco_passage_XX_000000000';
 ```sql
 SELECT extract_passage_terms((SELECT passage_tsv FROM passage WHERE passage_tsv IS NOT NULL LIMIT 1));
 SELECT unnest(extract_passage_terms_freq((SELECT passage_tsv FROM passage WHERE passage_tsv IS NOT NULL LIMIT 1))) AS tf;
+```
+
+
+```sql
+CREATE TABLE public.passage (
+    id UUID NOT NULL DEFAULT gen_random_uuid(),
+    pid STRING NOT NULL,
+    passage STRING NOT NULL,
+    spans STRING NOT NULL,
+    docid STRING NOT NULL,
+    passage_vector VECTOR(384) NULL,
+    passage_openai VECTOR(1536) NULL,
+    passage_tsv_len INT8 NULL,
+    passage_tsv TSVECTOR NULL,
+    CONSTRAINT passage_pkey PRIMARY KEY (id ASC),
+    UNIQUE INDEX passage_pid_key (pid ASC),
+    VECTOR INDEX passage_passage_vector_idx (passage_vector vector_cosine_ops) WHERE passage_vector IS NOT NULL,
+    INDEX passage_passage_vector_id_null_idx (id ASC) WHERE passage_vector IS NULL,
+    INDEX passage_passage_vector_id_not_null_idx (id ASC) WHERE passage_vector IS NOT NULL,
+    VECTOR INDEX passage_passage_openai_idx (passage_openai vector_cosine_ops) WHERE passage_openai IS NOT NULL,
+    INDEX passage_passage_openai_id_null_idx (id ASC) WHERE passage_openai IS NULL,
+    INDEX passage_passage_openai_id_not_null_idx (id ASC) WHERE passage_openai IS NOT NULL,
+    INVERTED INDEX passage_tsv_idx (passage_tsv),
+    INDEX passage_passage_tsv_id_null_idx (id ASC) WHERE passage_tsv IS NULL,
+    INDEX passage_passage_tsv_id_not_null_idx (id ASC) WHERE passage_tsv IS NOT NULL
+) LOCALITY REGIONAL BY TABLE IN PRIMARY REGION;
 ```

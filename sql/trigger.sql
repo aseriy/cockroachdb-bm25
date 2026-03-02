@@ -1,4 +1,4 @@
-CREATE OR REPLACE FUNCTION passage_passage_tsv_terms_sync()
+CREATE OR REPLACE FUNCTION bm25_sync()
 RETURNS trigger
 LANGUAGE plpgsql
 AS $$
@@ -21,11 +21,11 @@ BEGIN
         v_return := NEW;
 
         -- Increments term counters
-        INSERT INTO passage_passage_tsv_terms (term, freq)
-        SELECT term, 1
+        INSERT INTO _tsv_terms (table_name, column_name, term, freq)
+        SELECT 'passage', 'passage', term, 1
         FROM extract_passage_terms((NEW).passage_tsv) AS term
-        ON CONFLICT (term)
-        DO UPDATE SET freq = passage_passage_tsv_terms.freq + 1;
+        ON CONFLICT (table_name, column_name, term)
+        DO UPDATE SET freq = _tsv_terms.freq + 1;
 
         -- Increment corpus stats
         UPDATE _tsv_corpus
@@ -36,10 +36,11 @@ BEGIN
         v_return := OLD;
 
         -- Decrement term counters
-        UPDATE passage_passage_tsv_terms AS t
-        SET freq = t.freq - 1
-        FROM extract_passage_terms((OLD).passage_tsv) AS term
-        WHERE t.term = term.term;
+        UPDATE _tsv_terms
+        SET freq = freq - 1
+        FROM extract_passage_terms((OLD).passage_tsv) AS old_term
+        WHERE term = old_term
+            AND table_name ='passage' AND column_name = 'passage';
 
         -- Decrement corpus stats
         UPDATE _tsv_corpus
@@ -55,24 +56,25 @@ BEGIN
         v_return := NEW;
 
         -- First: Handle removals
-        UPDATE passage_passage_tsv_terms AS t
-        SET freq = t.freq - 1
+        UPDATE _tsv_terms AS t
+        SET freq = freq - 1
         FROM (
             SELECT term FROM extract_passage_terms((OLD).passage_tsv)
             EXCEPT
             SELECT term FROM extract_passage_terms((NEW).passage_tsv)
         ) AS removed
-        WHERE t.term = removed.term;
+        WHERE t.term = removed.term
+            AND t.table_name ='passage' AND t.column_name = 'passage';
 
         -- Second: Handle additions
-        INSERT INTO passage_passage_tsv_terms (term, freq)
-        SELECT term, 1 FROM (
+        INSERT INTO _tsv_terms (table_name, column_name, term, freq)
+        SELECT 'passage', 'passage', term, 1 FROM (
             SELECT term FROM extract_passage_terms((NEW).passage_tsv)
             EXCEPT
             SELECT term FROM extract_passage_terms((OLD).passage_tsv)
         ) AS added
-        ON CONFLICT (term)
-        DO UPDATE SET freq = passage_passage_tsv_terms.freq + 1;
+        ON CONFLICT (table_name, column_name, term)
+        DO UPDATE SET freq = _tsv_terms.freq + 1;
 
         -- Update corpus stats
         -- This doesn't change the document count (N)
@@ -93,8 +95,8 @@ $$;
 
 
 
-CREATE TRIGGER sync_passage_terms
+CREATE TRIGGER bm25_sync
     BEFORE INSERT OR UPDATE OR DELETE ON passage
     FOR EACH ROW
-    EXECUTE FUNCTION passage_passage_tsv_terms_sync();
+    EXECUTE FUNCTION bm25_sync();
 
