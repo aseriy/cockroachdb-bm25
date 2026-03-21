@@ -80,6 +80,7 @@ AS $$
       LEFT JOIN docs_tf AS dtf ON dtf.doc_pk = d.doc_pk AND dtf.term = q.term
   GROUP BY d.doc_pk
   ORDER BY score DESC
+  LIMIT limit_n
 $$;
 
 

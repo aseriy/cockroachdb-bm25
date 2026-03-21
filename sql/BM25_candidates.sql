@@ -8,5 +8,4 @@ AS $$
   SELECT id
   FROM passage
   WHERE passage_tsv @@ plainto_tsquery('english', query)
-  LIMIT limit_n
 $$;
