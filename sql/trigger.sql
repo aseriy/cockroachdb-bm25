@@ -57,17 +57,6 @@ BEGIN
             ub = GREATEST(_tsv_terms_131_3.ub, EXCLUDED.ub);
             
 
-        -- Add term contrib (TC) to _tsv_term_tc_<tbl_oid>_<col_oid>
-        INSERT INTO _tsv_term_tc_131_3 (doc_id, term, tc)
-        SELECT id, term, tc
-        FROM jsonb_to_recordset(v_tsv_term_tc)
-            AS x(id UUID, term STRING, tc FLOAT);
-
-        -- Increment corpus stats
-        UPDATE _tsv_corpus
-            SET n = n + 1, total = total + (NEW).passage_tsv_len
-            WHERE table_name ='passage' AND column_name = 'passage';
-
         -- Update BMW blocks
         WITH term_rows AS (
             SELECT *
@@ -88,6 +77,17 @@ BEGIN
                 ELSE BM25_BMW_add_to_block(block_id, term, id, tc)
             END
         FROM routed;
+
+        -- Add term contrib (TC) to _tsv_term_tc_<tbl_oid>_<col_oid>
+        INSERT INTO _tsv_term_tc_131_3 (doc_id, term, tc)
+        SELECT id, term, tc
+        FROM jsonb_to_recordset(v_tsv_term_tc)
+            AS x(id UUID, term STRING, tc FLOAT);
+
+        -- Increment corpus stats
+        UPDATE _tsv_corpus
+            SET n = n + 1, total = total + (NEW).passage_tsv_len
+            WHERE table_name ='passage' AND column_name = 'passage';
 
 
     ELSIF TG_OP = 'DELETE' THEN
