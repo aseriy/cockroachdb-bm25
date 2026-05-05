@@ -47,6 +47,7 @@ def fetch_null_output_pks(pool, table_name, output_column, primary_key, limit, v
                 cur.execute(f"""
                             SELECT "{primary_key}" FROM "{table_name}"
                             WHERE "{output_column}" IS NULL
+                            ORDER BY random()
                             LIMIT %s
                             """,
                             (limit,))

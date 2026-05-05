@@ -78,12 +78,14 @@ BEGIN
             END
         FROM routed;
 
+
         -- Add term contrib (TC) to _tsv_term_tc_<tbl_oid>_<col_oid>
         INSERT INTO _tsv_term_tc_131_3 (doc_id, term, tc)
         SELECT id, term, tc
         FROM jsonb_to_recordset(v_tsv_term_tc)
             AS x(id UUID, term STRING, tc FLOAT);
 
+ 
         -- Increment corpus stats
         UPDATE _tsv_corpus
             SET n = n + 1, total = total + (NEW).passage_tsv_len
@@ -127,8 +129,6 @@ BEGIN
             ;
 
         -- Second: Handle additions
-        -- INSERT INTO _tsv_terms_131_3 (table_name, column_name, term, freq)
-        -- SELECT 'passage', 'passage', term, 1 FROM (
         INSERT INTO _tsv_terms_131_3 (term, freq)
         SELECT term, 1 FROM (
             SELECT term FROM extract_passage_terms((NEW).passage_tsv)
