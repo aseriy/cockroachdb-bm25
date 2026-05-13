@@ -225,7 +225,7 @@ SET LOCAL bm25.reset = 'true';
 UPDATE passage SET pid = pid
 WHERE id IN (
     SELECT id FROM passage
-        WHERE passage_tsv IS NULL
+        WHERE passage_tsv_jsonb IS NULL
     LIMIT 1
 );
 COMMIT;
@@ -245,6 +245,23 @@ WHERE id IN (
 );
 COMMIT;
 ```
+
+
+```bash
+while true; do
+  result=$(cockroach sql --url "$DB_URL" -e "
+    UPDATE passage
+    SET passage_tsv_jsonb = NULL
+    WHERE id IN (
+      SELECT id FROM passage
+      WHERE passage_tsv_jsonb IS NOT NULL
+        AND passage_tsv IS NULL
+      LIMIT 100
+    );")
+  echo "$result"
+done
+```
+
 
 ```sql
 SELECT passage_tsv, passage_tsv_jsonb FROM passage WHERE passage_tsv IS NOT NULL; 

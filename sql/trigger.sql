@@ -18,8 +18,8 @@ BEGIN
 
     IF TG_OP = 'INSERT' OR TG_OP = 'UPDATE' AND v_reset THEN
 
-        NEW.passage_tsv := to_tsvector('english', (NEW).passage);
-        NEW.passage_tsv_len := tsv_doclen((NEW).passage_tsv);
+        -- NEW.passage_tsv := to_tsvector('english', (NEW).passage);
+        -- NEW.passage_tsv_len := tsv_doclen((NEW).passage_tsv);
 
         v_tsv_json := document_to_tsv_jsonb((NEW).passage);
 
@@ -78,7 +78,7 @@ BEGIN
  
         -- Increment corpus stats
         UPDATE _tsv_corpus
-            SET n = n + 1, total = total + (NEW).passage_tsv_len
+            SET n = n + 1, total = total + (v_tsv_json->>'dl')::INT8
             WHERE table_name ='passage' AND column_name = 'passage';
 
 
