@@ -21,28 +21,18 @@ BEGIN
         NEW.passage_tsv := to_tsvector('english', (NEW).passage);
         NEW.passage_tsv_len := tsv_doclen((NEW).passage_tsv);
 
+        v_tsv_json := document_to_tsv_jsonb((NEW).passage);
+
+        NEW.passage_tsv_jsonb := v_tsv_json;
+
         SELECT jsonb_agg(to_jsonb(t)) INTO v_tsv_term_tc
         FROM (
             SELECT
             (NEW).id,
             f.term,
-            f.freq::FLOAT / (NEW).passage_tsv_len::FLOAT AS tc
-            FROM extract_passage_terms_freq((NEW).passage_tsv) AS f
+            f.freq::FLOAT / (v_tsv_json->>'dl')::FLOAT AS tc
+            FROM jsonb_each(v_tsv_json->'tf') AS f(term, freq)
         ) AS t;
-
-        SELECT jsonb_build_object(
-            'tf',
-            COALESCE(
-                jsonb_object_agg(f.term, f.freq),
-                '{}'::JSONB
-            ),
-            'dl',
-            tsv_doclen((NEW).passage_tsv)
-        )
-        INTO v_tsv_json
-        FROM extract_passage_terms_freq((NEW).passage_tsv) AS f;
-        
-        NEW.passage_tsv_jsonb := v_tsv_json;
 
         v_return := NEW;
 

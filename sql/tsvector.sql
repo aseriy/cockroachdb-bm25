@@ -43,3 +43,27 @@ AS $$
              )
          ) AS pos
 $$;
+
+
+
+CREATE OR REPLACE FUNCTION document_to_tsv_jsonb(document TEXT)
+RETURNS JSONB
+LANGUAGE SQL
+STABLE
+AS $$
+    SELECT jsonb_build_object(
+        'tf', COALESCE(jsonb_object_agg(term, freq), '{}'::JSONB),
+        'dl', sum(freq)
+    )
+    FROM (
+        SELECT
+            trim(both '''' FROM split_part(tok, ':', 1)) AS term,
+            count(*) AS freq
+        FROM
+            unnest(string_to_array(to_tsvector('english', document)::TEXT, ' ')) AS tok,
+            unnest(string_to_array(split_part(tok, ':', 2), ',')) AS pos
+        GROUP BY term
+    ) AS tf
+$$;
+
+

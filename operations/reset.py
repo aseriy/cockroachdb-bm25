@@ -47,7 +47,6 @@ def fetch_null_output_pks(pool, table_name, output_column, primary_key, limit, v
                 cur.execute(f"""
                             SELECT "{primary_key}" FROM "{table_name}"
                             WHERE "{output_column}" IS NULL
-                            ORDER BY random()
                             LIMIT %s
                             """,
                             (limit,))
@@ -82,33 +81,36 @@ def batch_touch(
     if not pks:
         return None
 
-    conn = worker_get_conn(db_url)
+    max_retries = 100
+    for pk in pks:
+        for attempt in range(1, max_retries + 1):
+            conn = worker_get_conn(db_url)
+            try:
+                with conn.cursor() as cur:
+                    sql = f'''
+                        UPDATE {table_name}
+                        SET {input_column} = {input_column}
+                        WHERE {primary_key} = %s
+                    '''
+                    cur.execute("SET LOCAL bm25.reset = 'true'")
+                    cur.execute(sql, (pk,))
+                    conn.commit()
+                    print(pk)
 
-    max_retries = 10
-    for attempt in range(1, max_retries + 1):
-        try:
-            with conn.cursor() as cur:
-                cur.execute("SET LOCAL bm25.reset = 'true'")
-                sql = f'''
-                    UPDATE "{table_name}"
-                    SET "{input_column}" = "{input_column}"
-                    WHERE "{primary_key}" = ANY(%s)
-                '''
-                # print(sql)
-                cur.execute(sql, (pks,))
-            conn.commit()
-            break
-        except Exception as e:
-            conn.rollback()
-            timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-            if attempt < max_retries:
-                warnings.append(f"[{timestamp}] [WARN] (batch {batch_index}) Retry {attempt}/{max_retries} after failure: {e}")
-                time.sleep(0.5 * attempt + random.uniform(0, 0.3))
-            else:
-                errors.append(f"[{timestamp}] [ERROR] Failed after {max_retries} retries: {e}")
+                break
+
+            except Exception as e:
+                conn.rollback()
+                timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+                if attempt < max_retries:
+                    warnings.append(f"[{timestamp}] [WARN] (batch {batch_index}) Retry {attempt}/{max_retries} after failure: {e}")
+                    time.sleep(0.5 * attempt + random.uniform(0, 0.3))
+                else:
+                    errors.append(f"[{timestamp}] [ERROR] Failed after {max_retries} retries: {e}")
     
+            finally:
+                worker_put_conn(conn)
 
-    worker_put_conn(conn)
     return errors, warnings
     
 
@@ -125,7 +127,9 @@ def run_reset(args):
         initializer=worker_init, initargs=(args['url'],)
     )
     
-    conn_pool = SimpleConnectionPool(minconn=0, maxconn=args['workers'], **build_conn_kwargs(args['url']))
+    conn_min = args['batch_size'] * args['workers']
+    conn_max = 10 * conn_min
+    conn_pool = SimpleConnectionPool(minconn=conn_min, maxconn=conn_max, **build_conn_kwargs(args['url']))
     atexit.register(conn_pool.closeall)
 
     batch_counter = 0

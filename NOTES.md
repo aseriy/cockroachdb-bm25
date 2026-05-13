@@ -226,8 +226,7 @@ UPDATE passage SET pid = pid
 WHERE id IN (
     SELECT id FROM passage
         WHERE passage_tsv IS NULL
-    ORDER BY random()
-    LIMIT 100
+    LIMIT 1
 );
 COMMIT;
 ```
@@ -894,3 +893,244 @@ Run `reset` on auto-pilot:
 ```bash
 docker run --rm -d --name rank-reset -v $HOME/.postgresql:/root/.postgresql:ro -v $(pwd)/logs:/logs rank-reset -u <url>> -t passage -i passage -o passage_tsv -v -b 50 -w 1 -F 
 ```
+
+
+
+
+Use case query: `one use case`
+
+Get the first block for `one`:
+
+```sql
+SELECT * FROM _tsv_bmw_131_3 AS OF SYSTEM TIME follower_read_timestamp() WHERE term='one' LIMIT 1;
+```
+
+```sql
+  term |             doc_id_first             |             doc_id_last              | doc_count |         ub
+-------+--------------------------------------+--------------------------------------+-----------+---------------------
+  one  | 00002c3d-6cd3-4cc5-a0a1-879812feca07 | 00102483-9c29-4930-92e7-ee2861445147 |        50 | 0.1111111111111111
+(1 row)
+```
+
+The find the overlaping document for the 2nd, 3rd, etc. query terms:
+
+```sql
+SELECT * FROM _tsv_bmw_131_3 AS OF SYSTEM TIME follower_read_timestamp()
+WHERE term='use'
+AND
+doc_id_first >= '00002c3d-6cd3-4cc5-a0a1-879812feca07'  
+AND
+doc_id_last <= '00102483-9c29-4930-92e7-ee2861445147';
+```
+
+```sql
+  term | doc_id_first | doc_id_last | doc_count | ub
+-------+--------------+-------------+-----------+-----
+(0 rows)
+```
+
+No overlaping documents containing the term `use`. Move to the next block for `one`.
+
+```sql
+SELECT * FROM _tsv_bmw_131_3 AS OF SYSTEM TIME follower_read_timestamp() WHERE term='one'
+AND
+doc_id_first >= '00102483-9c29-4930-92e7-ee2861445147'
+LIMIT 1;
+```
+
+```sql
+  term |             doc_id_first             |             doc_id_last              | doc_count |         ub
+-------+--------------------------------------+--------------------------------------+-----------+----------------------
+  one  | 001047ca-373a-4131-806b-b1c5404183e7 | 00238fd8-de3e-4af8-bc06-8fb4db7e16a0 |        50 | 0.08695652173913043
+(1 row)
+```
+
+```sql
+SELECT * FROM _tsv_bmw_131_3 AS OF SYSTEM TIME follower_read_timestamp()
+WHERE term='use'
+AND
+doc_id_first >= '001047ca-373a-4131-806b-b1c5404183e7'  
+AND
+doc_id_last <= '00238fd8-de3e-4af8-bc06-8fb4db7e16a0';
+```
+
+```sql
+  term |             doc_id_first             |             doc_id_last              | doc_count |         ub
+-------+--------------------------------------+--------------------------------------+-----------+---------------------
+  use  | 00164dd1-74ce-45eb-a343-2a44a58e77f1 | 0021d323-319c-4935-bf20-6666c3d9232d |        50 | 0.1111111111111111
+(1 row)
+```
+
+```sql
+SELECT * FROM _tsv_bmw_131_3 AS OF SYSTEM TIME follower_read_timestamp()
+WHERE term='case'
+AND
+doc_id_first >= '00164dd1-74ce-45eb-a343-2a44a58e77f1'  
+AND
+doc_id_last <= '0021d323-319c-4935-bf20-6666c3d9232d';
+```
+
+
+```sql
+  term | doc_id_first | doc_id_last | doc_count | ub
+-------+--------------+-------------+-----------+-----
+(0 rows)
+```
+
+Move to the next block for `one`:
+
+```sql
+SELECT * FROM _tsv_bmw_131_3 AS OF SYSTEM TIME follower_read_timestamp() WHERE term='one'
+AND
+doc_id_first >= '00238fd8-de3e-4af8-bc06-8fb4db7e16a0'
+LIMIT 1;
+```
+
+```sql
+  term |             doc_id_first             |             doc_id_last              | doc_count |         ub
+-------+--------------------------------------+--------------------------------------+-----------+----------------------
+  one  | 00241777-b57b-441e-ac31-a79cdabc5f54 | 0034d969-5038-4296-9d89-64e3c316feb2 |        50 | 0.09523809523809523
+(1 row)
+```
+
+```sql
+SELECT * FROM _tsv_bmw_131_3 AS OF SYSTEM TIME follower_read_timestamp()
+WHERE term='use'
+AND
+doc_id_first >= '00241777-b57b-441e-ac31-a79cdabc5f54'  
+AND
+doc_id_last <= '0034d969-5038-4296-9d89-64e3c316feb2';
+```
+
+```sql
+  term | doc_id_first | doc_id_last | doc_count | ub
+-------+--------------+-------------+-----------+-----
+(0 rows)
+```
+
+
+```sql
+SELECT * FROM _tsv_bmw_131_3 AS OF SYSTEM TIME follower_read_timestamp() WHERE term='one'
+AND
+doc_id_first >= '0034d969-5038-4296-9d89-64e3c316feb2'
+LIMIT 1;
+```
+
+```sql
+  term |             doc_id_first             |             doc_id_last              | doc_count |         ub
+-------+--------------------------------------+--------------------------------------+-----------+----------------------
+  one  | 00351040-1d0a-4c85-842d-f83716f0928c | 0050d155-b9bb-4ebd-8f51-04f232d5dd68 |        50 | 0.12903225806451613
+(1 row)
+```
+
+```sql
+SELECT * FROM _tsv_bmw_131_3 AS OF SYSTEM TIME follower_read_timestamp()
+WHERE term='use'
+AND
+doc_id_first >= '00351040-1d0a-4c85-842d-f83716f0928c'  
+AND
+doc_id_last <= '0050d155-b9bb-4ebd-8f51-04f232d5dd68';
+```
+
+```sql
+  term | doc_id_first | doc_id_last | doc_count | ub
+-------+--------------+-------------+-----------+-----
+(0 rows)
+```
+
+
+```sql
+SELECT * FROM _tsv_bmw_131_3 AS OF SYSTEM TIME follower_read_timestamp() WHERE term='one'
+AND
+doc_id_first >= '0050d155-b9bb-4ebd-8f51-04f232d5dd68'
+LIMIT 1;
+```
+
+```sql
+  term |             doc_id_first             |             doc_id_last              | doc_count |  ub
+-------+--------------------------------------+--------------------------------------+-----------+--------
+  one  | 0052d7f0-a272-45a1-bbc8-48d614184ac4 | 0602df11-a371-4f04-a66e-b9452f8f4a90 |        54 | 0.125
+(1 row)
+```
+
+```sql
+SELECT * FROM _tsv_bmw_131_3 AS OF SYSTEM TIME follower_read_timestamp()
+WHERE term='use'
+AND
+doc_id_first >= '0052d7f0-a272-45a1-bbc8-48d614184ac4'  
+AND
+doc_id_last <= '0602df11-a371-4f04-a66e-b9452f8f4a90';
+```
+
+```sql
+SELECT * FROM _tsv_bmw_131_3 AS OF SYSTEM TIME follower_read_timestamp() WHERE term='one'
+AND
+doc_id_first >= '0602df11-a371-4f04-a66e-b9452f8f4a90'
+LIMIT 1;
+```
+
+```sql
+  term |             doc_id_first             |             doc_id_last              | doc_count |         ub
+-------+--------------------------------------+--------------------------------------+-----------+----------------------
+  one  | 0608ff49-76b7-4eea-a792-6725eae3fa1f | 0aefc13c-7f79-4707-9671-a46607af24a3 |        54 | 0.17391304347826086
+(1 row)
+```
+
+
+```sql
+SELECT * FROM _tsv_bmw_131_3 AS OF SYSTEM TIME follower_read_timestamp()
+WHERE term='use'
+AND
+doc_id_first >= '0608ff49-76b7-4eea-a792-6725eae3fa1f'  
+AND
+doc_id_last <= '0aefc13c-7f79-4707-9671-a46607af24a3';
+```
+
+
+```sql
+SELECT * FROM _tsv_bmw_131_3 AS OF SYSTEM TIME follower_read_timestamp() WHERE term='one'
+AND
+doc_id_first >= '0aefc13c-7f79-4707-9671-a46607af24a3'
+LIMIT 1;
+```
+
+```sql
+  term |             doc_id_first             |             doc_id_last              | doc_count |         ub
+-------+--------------------------------------+--------------------------------------+-----------+----------------------
+  one  | 0af0be68-7125-4fa4-b6ab-3234c0ff2ad6 | 12a829b3-3430-4124-9dad-4de09428105f |        63 | 0.10344827586206896
+(1 row)
+```
+
+```sql
+SELECT * FROM _tsv_bmw_131_3 AS OF SYSTEM TIME follower_read_timestamp()
+WHERE term='use'
+AND
+doc_id_first >= '0af0be68-7125-4fa4-b6ab-3234c0ff2ad6'  
+AND
+doc_id_last <= '12a829b3-3430-4124-9dad-4de09428105f';
+```
+
+```sql
+SELECT * FROM _tsv_bmw_131_3 AS OF SYSTEM TIME follower_read_timestamp() WHERE term='one'
+AND
+doc_id_first >= '12a829b3-3430-4124-9dad-4de09428105f'
+LIMIT 1;
+```
+
+```sql
+  term |             doc_id_first             |             doc_id_last              | doc_count |  ub
+-------+--------------------------------------+--------------------------------------+-----------+--------
+  one  | 12a85333-c62e-4468-9457-a973e2c796da | 1abf005a-ba2d-4592-bea9-473fdb42fa21 |        62 | 0.125
+(1 row)
+```
+
+
+```sql
+SELECT * FROM _tsv_bmw_131_3 AS OF SYSTEM TIME follower_read_timestamp()
+WHERE term='use'
+AND
+doc_id_first >= '12a85333-c62e-4468-9457-a973e2c796da'  
+AND
+doc_id_last <= '1abf005a-ba2d-4592-bea9-473fdb42fa21';
+```
+
