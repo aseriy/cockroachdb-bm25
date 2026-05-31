@@ -1,6 +1,10 @@
 import click
 import json
-from operations import run_reset #, run_rank
+from operations import (
+    run_reset,
+    # run_rank,
+    run_index
+)
 
 
 class OperationGroup(click.Group):
@@ -19,6 +23,23 @@ class OperationGroup(click.Group):
 
 
 
+def parse_table_name(table: str) -> tuple[str,str]:
+    # Split by the dot to separate schema and table
+    parts = table.split('.')
+    
+    if len(parts) > 2:
+        raise ValueError(f"Invalid table identifier format: {table}")
+
+    schema = None
+    if len(parts) > 1:
+        schema, table = parts
+    else:
+        table = parts[0] 
+
+    return schema, table
+
+
+
 @click.group(
     cls=OperationGroup,
     options_metavar="[OPTIONS]",
@@ -29,18 +50,19 @@ def cli():
 
 
 
-def shared_db_options(f):
+def common_options(f):
     f = click.option("-u", "--url", required=True, help="CockroachDB connection URL")(f)
     f = click.option("-t", "--table", required=True, help="Target table name")(f)
     f = click.option("-i", "--input", "input_col", required=True, help="Column containing input text")(f)
-    f = click.option("-o", "--output", "output_col", required=True, help="Column to store the vector")(f)
     f = click.option("-v", "--verbose", is_flag=True, help="Verbose output (used for debugging)")(f)
     return f
 
 
 
 @cli.command(short_help="Reset BM25 stats.")
-@shared_db_options
+@common_options
+@click.option("-o", "--output", "output_col", required=True,
+                help="Column to store the vector")
 @click.option("-w", "--workers", default=1, type=int,
                 help="Number of parallel workders to use (default: 1)")
 @click.option("-b", "--batch-size", default=1000, type=int, help="Rows to process per batch")
@@ -88,8 +110,36 @@ def reset(
 
 
 
+@cli.command(short_help="Build BM25 index")
+@common_options
+@click.option("-b", "--batch-size", default=1000, type=int, help="Rows to process per batch")
+@click.option("-n", "--num-batches", default=1, type=int,
+              help="Number of batches to process before exiting (default: 1)")
+def index(
+    url,
+    table,
+    input_col,
+    batch_size,
+    num_batches,
+    verbose
+):
+
+    args = {
+        "url": url,
+        "table": table,
+        "input": input_col,
+        "verbose": verbose,
+        "batch_size": batch_size,
+        "num_batches": num_batches,
+    }
+
+    run_index(args)
+
+
+
+
 @cli.command(short_help="Run BM25 ranking.")
-@shared_db_options
+@common_options
 def rank(
     url,
     table,
@@ -108,59 +158,6 @@ def rank(
 
     # print(json.dumps(args, indent=2))
     # run_rank(args)
-
-
-# @cli.command(short_help="Run similarity search")
-# @shared_db_options
-# @click.option("-l", "--limit", default=10, type=int, help="Number of the closest matches (default: 10)")
-# @click.argument("text", required=False)
-# def search(
-#         url,
-#         table,
-#         input_col,
-#         output_col,
-#         limit,
-#         model,
-#         verbose,
-#         text
-# ):
-
-#     args = {
-#         "url": url,
-#         "table": table,
-#         "source": input_col,
-#         "embedding": output_col,
-#         "limit": limit,
-#         "model": model,
-#         "verbose": verbose,
-#         "text": text
-#     }
-
-#     run_search(args)
-
-
-
-
-# @cli.group(short_help="Explore available vector embedding models.")
-# def model():
-#     pass
-
-
-# @model.command(short_help="List available vector embedding models.")
-# def list():
-#     args = {}
-#     run_model_list(args)
-
-
-
-# @model.command(short_help="Describe spefic model.")
-# @click.argument("model", required=True)
-# def desc(model: str):
-#     args = {
-#         "model": model
-#     }
-#     run_model_desc(args)
-
 
 
 

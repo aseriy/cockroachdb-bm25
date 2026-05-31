@@ -18,68 +18,63 @@ BEGIN
 
     IF TG_OP = 'INSERT' OR TG_OP = 'UPDATE' AND v_reset THEN
 
-        -- NEW.passage_tsv := to_tsvector('english', (NEW).passage);
-        -- NEW.passage_tsv_len := tsv_doclen((NEW).passage_tsv);
-
         v_tsv_json := document_to_tsv_jsonb((NEW).passage);
-
-        NEW.passage_tsv_jsonb := v_tsv_json;
-
-        SELECT jsonb_agg(to_jsonb(t)) INTO v_tsv_term_tc
-        FROM (
-            SELECT
-            (NEW).id,
-            f.term,
-            f.freq::FLOAT / (v_tsv_json->>'dl')::FLOAT AS tc
-            FROM jsonb_each(v_tsv_json->'tf') AS f(term, freq)
-        ) AS t;
-
+        NEW.passage_tsv_jsonb := jsonb_build_object('0', v_tsv_json);
         v_return := NEW;
 
-        -- Increments term counters and updates upper bound
-        INSERT INTO _tsv_terms_131_3 (term, freq, ub)
-        SELECT term, 1, tc
-        FROM jsonb_to_recordset(v_tsv_term_tc) 
-            AS x(id UUID, term STRING, tc FLOAT)
-        ON CONFLICT (term)
-        DO UPDATE SET 
-            freq = _tsv_terms_131_3.freq + 1,
-            ub = GREATEST(_tsv_terms_131_3.ub, EXCLUDED.ub);
+        -- SELECT jsonb_agg(to_jsonb(t)) INTO v_tsv_term_tc
+        -- FROM (
+        --     SELECT
+        --     (NEW).id,
+        --     f.term,
+        --     f.freq::FLOAT / (v_tsv_json->>'dl')::FLOAT AS tc
+        --     FROM jsonb_each(v_tsv_json->'tf') AS f(term, freq)
+        -- ) AS t;
+
+        -- -- Increments term counters and updates upper bound
+        -- INSERT INTO _tsv_terms_131_3 (term, freq, ub)
+        -- SELECT term, 1, tc
+        -- FROM jsonb_to_recordset(v_tsv_term_tc) 
+        --     AS x(id UUID, term STRING, tc FLOAT)
+        -- ON CONFLICT (term)
+        -- DO UPDATE SET 
+        --     freq = _tsv_terms_131_3.freq + 1,
+        --     ub = GREATEST(_tsv_terms_131_3.ub, EXCLUDED.ub);
             
 
-        -- Update BMW blocks
-        WITH term_rows AS (
-            SELECT *
-            FROM jsonb_to_recordset(v_tsv_term_tc)
-                AS x(id UUID, term STRING, tc FLOAT8)
-        ),
-        routed AS (
-            SELECT
-                id,
-                term,
-                tc,
-                BM25_BMW_find_block(term, id) AS block_id
-            FROM term_rows
-        )
-        SELECT
-            CASE
-                WHEN block_id IS NULL THEN BM25_BMW_create_block(term, id, tc)
-                ELSE BM25_BMW_add_to_block(block_id, term, id, tc)
-            END
-        FROM routed;
+        -- -- Update BMW blocks
+        -- WITH term_rows AS (
+        --     SELECT *
+        --     FROM jsonb_to_recordset(v_tsv_term_tc)
+        --         AS x(id UUID, term STRING, tc FLOAT8)
+        -- ),
+        -- routed AS (
+        --     SELECT
+        --         id,
+        --         term,
+        --         tc,
+        --         BM25_BMW_find_block(term, id) AS block_id
+        --     FROM term_rows
+        -- )
+        -- SELECT
+        --     CASE
+        --         WHEN block_id IS NULL THEN BM25_BMW_create_block(term, id, tc)
+        --         ELSE BM25_BMW_add_to_block(block_id, term, id, tc)
+        --     END
+        -- FROM routed;
 
 
-        -- Add term contrib (TC) to _tsv_term_tc_<tbl_oid>_<col_oid>
-        INSERT INTO _tsv_term_tc_131_3 (doc_id, term, tc)
-        SELECT id, term, tc
-        FROM jsonb_to_recordset(v_tsv_term_tc)
-            AS x(id UUID, term STRING, tc FLOAT);
+        -- -- Add term contrib (TC) to _tsv_term_tc_<tbl_oid>_<col_oid>
+        -- INSERT INTO _tsv_term_tc_131_3 (doc_id, term, tc)
+        -- SELECT id, term, tc
+        -- FROM jsonb_to_recordset(v_tsv_term_tc)
+        --     AS x(id UUID, term STRING, tc FLOAT);
 
  
-        -- Increment corpus stats
-        UPDATE _tsv_corpus
-            SET n = n + 1, total = total + (v_tsv_json->>'dl')::INT8
-            WHERE table_name ='passage' AND column_name = 'passage';
+        -- -- Increment corpus stats
+        -- UPDATE _tsv_corpus
+        --     SET n = n + 1, total = total + (v_tsv_json->>'dl')::INT8
+        --     WHERE table_name ='passage' AND column_name = 'passage';
 
 
     ELSIF TG_OP = 'DELETE' THEN
