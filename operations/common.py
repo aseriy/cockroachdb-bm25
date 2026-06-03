@@ -36,7 +36,7 @@ def build_conn_kwargs(db_url) -> dict[str, Any]:
 
 def main_get_conn(pool) -> connection:
     conn = pool.getconn()
-    conn.autocommit = True
+    conn.autocommit = False
     return conn
 
 

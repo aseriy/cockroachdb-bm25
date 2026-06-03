@@ -190,13 +190,35 @@ def index_single_batch(
                     batch_counter: int,
                     verbose: bool = False
 ):
+    """Index a single batch of documents by updating BM25 index tables.
+
+    Args:
+        pool: Database connection pool
+        url:
+        schema:
+        table:
+        primary_key:
+        primary_key_type:
+        doc_column:
+        idx_column:
+        ids:
+        batch_counter:
+            doc_id: Document primary key
+            doc_id_type: SQL type name for doc_id
+            jsonb_obj: JSONB object containing document term frequencies and metadata
+            corpus: Corpus statistics table name
+            terms: Terms frequency/upper bound table name
+            terms_tc: Term contribution table name
+            bmw: BMW blocks table name
+        verbose: Enable verbose logging
+    """
 
 
+    # update_term_contributions()
     # update_bmw_blocks()
     # update_term_frequency()
-    # update_term_contributions()
-    # update_corpus()
 
+    # update_corpus()
 
     return  update_count, worker_errors, worker_warnings
 
