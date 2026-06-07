@@ -157,6 +157,39 @@ def get_primary_key_column(pool, schema_name, table_name) -> dict:
 
 
 
+def get_column_id(pool, schema_name: str, table_name: str, column_name: str) -> int:
+    conn = main_get_conn(pool)
+
+    sql = f"""
+        SELECT a.attnum AS column_id
+        FROM pg_catalog.pg_class c
+        JOIN pg_catalog.pg_attribute a ON c.oid = a.attrelid
+        JOIN pg_catalog.pg_namespace n ON c.relnamespace = n.oid
+        WHERE {"n.nspname = %s AND" if schema_name is not None else ""}
+              c.relname = %s
+              AND a.attname = %s
+              AND a.attnum > 0
+              AND NOT a.attisdropped
+    """
+
+    with conn.cursor() as cur:
+        if schema_name is not None:
+            cur.execute(sql, (schema_name, table_name, column_name))
+        else:
+            cur.execute(sql, (table_name, column_name))
+        result = cur.fetchone()
+
+    pool.putconn(conn)
+
+    if not result:
+        if schema_name is not None:
+            table_name = f"{schema_name}.{table_name}"
+        raise RuntimeError(f"Column '{column_name}' not found in table '{table_name}'")
+
+    return result[0]
+
+
+
 def get_column_type(
         pool,
         schema_name: str,
