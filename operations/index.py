@@ -2,6 +2,8 @@ from psycopg2.pool import SimpleConnectionPool
 import atexit
 import time
 import random
+import pprint
+import json
 from .common import (
     build_conn_kwargs,
     main_get_conn,
@@ -217,11 +219,24 @@ def index_single_batch(
                 inserts = sum(1 for op, _, _ in batch if op == SQLOperation.INSERT)
                 updates = sum(1 for op, _, _ in batch if op == SQLOperation.UPDATE)
                 print(f"[INFO] Batch: {len(batch)} docs ({inserts} inserts, {updates} updates)")
+                pprint.pprint(batch)
+
+            # Calculate TC values for all documents in the batch
+            batch_tc = []
+            for operation, doc_id, tsv_dict in batch:
+                dl = tsv_dict['dl']  # document length
+                tf = tsv_dict['tf']  # {term: freq, ...}
+
+                tc_dict = {term: freq / dl for term, freq in tf.items()}
+                batch_tc.append({doc_id: tc_dict})
+
+            if verbose:
+                print(f"[INFO] TC's: {json.dumps(batch_tc, indent=2)}")
 
             # Call update functions
             update_term_contribution(cursor, batch, primary_key_type, index_tables['term_tc'], verbose)
-            update_bmw_blocks(cursor, batch, primary_key_type, index_tables['bmw'], index_tables['term_tc'], block_size, verbose)
             update_term_frequency(cursor, batch, primary_key_type, index_tables['terms'], verbose)
+            update_bmw_blocks(cursor, batch, primary_key_type, index_tables['bmw'], index_tables['term_tc'], block_size, verbose)
             update_corpus(cursor, batch, index_tables['corpus'], verbose)
 
         conn.commit()
