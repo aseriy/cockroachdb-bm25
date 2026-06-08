@@ -111,17 +111,37 @@ def update_bmw_blocks(
 
 
 def update_corpus(
-    cursor,
     batch: list,
+    table_name: str,
+    column_name: str,
     corpus_table: str,
     verbose=False
-):
-    # -- -- Increment corpus stats
-    # -- UPDATE _tsv_corpus
-    # --     SET n = n + 1, total = total + (v_tsv_json->>'dl')::INT8
-    # --     WHERE table_name ='passage' AND column_name = 'passage';
+) -> str | None:
+    """Generate SQL to update corpus statistics.
 
-    pass
+    Args:
+        batch: List of (operation, doc_id, tsv_dict) tuples
+        table_name: Table name for WHERE clause
+        column_name: Column name for WHERE clause
+        corpus_table: Corpus table name
+        verbose: Enable verbose logging
+
+    Returns:
+        SQL UPDATE statement, or None if no data
+    """
+    if not batch:
+        return None
+
+    doc_count = len(batch)
+    total_dl = sum(tsv_dict['dl'] for _, _, tsv_dict in batch)
+
+    sql = f"""
+        UPDATE {corpus_table}
+        SET n = n + {doc_count}, total = total + {total_dl}
+        WHERE table_name = '{table_name}' AND column_name = '{column_name}'
+    """
+
+    return sql
 
 
 
@@ -228,7 +248,7 @@ def index_single_batch(
     conn_pool: SimpleConnectionPool,
     schema: str | None, table: str,
     primary_key: str, primary_key_type: str,
-    idx_column: str,
+    doc_column:str, doc_idx_column: str,
     ids: list,
     index_tables: dict,
     block_size: int,
@@ -242,7 +262,7 @@ def index_single_batch(
         table: Table name
         primary_key: Primary key column name
         primary_key_type: Primary key SQL type
-        idx_column: JSONB column name
+        doc_idx_column: JSONB column name
         ids: List of document IDs to index
         index_tables: Dict of index table names
         block_size: BMW block size
@@ -253,7 +273,7 @@ def index_single_batch(
     """
 
     # Build qualified table name
-    table_qualified = f"{schema}.{table}" if schema else table
+    table = f"{schema}.{table}" if schema else table
 
     # Fetch JSONB data for batch
     conn = conn_pool.getconn()
@@ -261,8 +281,8 @@ def index_single_batch(
     try:
         with conn.cursor() as cursor:
             sql = f"""
-                SELECT {primary_key}, {idx_column}
-                FROM {table_qualified}
+                SELECT {primary_key}, {doc_idx_column}
+                FROM {table}
                 WHERE {primary_key} = ANY(%s::{primary_key_type}[])
             """
             cursor.execute(sql, (ids,))
@@ -307,7 +327,9 @@ def index_single_batch(
             print(f"SQL: {sql}")
 
             update_bmw_blocks(cursor, batch, primary_key_type, index_tables['bmw'], index_tables['term_tc'], block_size, verbose)
-            update_corpus(cursor, batch, index_tables['corpus'], verbose)
+            
+            sql = update_corpus(batch, table, doc_column, index_tables['corpus'], verbose)
+            print(f"SQL: {sql}")
 
         conn.commit()
 
@@ -331,7 +353,7 @@ def run_index_n_batches(
     conn_pool: SimpleConnectionPool,
     schema: str | None, table: str,
     primary_key: str, primary_key_type: str,
-    idx_column: str,
+    doc_column:str, doc_idx_column: str,
     index_tables: dict,
     block_size: int,
     batch_size: int, num_batches: int,
@@ -345,7 +367,7 @@ def run_index_n_batches(
         ids = fetch_unindexed_doc_ids(
                 conn_pool,
                 schema, table,
-                primary_key, idx_column,
+                primary_key, doc_idx_column,
                 batch_size,
                 verbose
             )
@@ -360,7 +382,7 @@ def run_index_n_batches(
             conn_pool,
             schema, table,
             primary_key, primary_key_type,
-            idx_column,
+            doc_column, doc_idx_column,
             ids,
             index_tables,
             block_size,
@@ -416,7 +438,7 @@ def run_index(args: dict):
         conn_pool,
         args["schema"], args["table"],
         primary_key, primary_key_type,
-        f"{args['input']}_tsv_jsonb",
+        args['input'], f"{args['input']}_tsv_jsonb",
         index_tables,
         block_size,
         args["batch_size"], args["num_batches"],
