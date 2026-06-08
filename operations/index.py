@@ -22,23 +22,57 @@ class SQLOperation(Enum):
 
 
 def update_term_frequency(
-    cursor,
-    batch: list,
-    doc_id_type: str,
+    batch_tc: list,
     terms_table: str,
     verbose=False
-):
-    # -- -- Increments term counters and updates upper bound
-    # -- INSERT INTO _tsv_terms_131_3 (term, freq, ub)
-    # -- SELECT term, 1, tc
-    # -- FROM jsonb_to_recordset(v_tsv_term_tc)
-    # --     AS x(id UUID, term STRING, tc FLOAT)
-    # -- ON CONFLICT (term)
-    # -- DO UPDATE SET
-    # --     freq = _tsv_terms_131_3.freq + 1,
-    # --     ub = GREATEST(_tsv_terms_131_3.ub, EXCLUDED.ub);
+) -> str | None:
+    """Generate SQL to upsert term frequencies into terms table.
 
-    pass
+    Args:
+        batch_tc: List of {doc_id: {term: tc, ...}} dictionaries
+        terms_table: Terms table name
+        verbose: Enable verbose logging
+
+    Returns:
+        SQL INSERT statement with ON CONFLICT, or None if no terms
+    """
+    # Track document count and max TC per term
+    term_stats = {}
+    for doc_tc_dict in batch_tc:
+        for doc_id, tc_dict in doc_tc_dict.items():
+            for term, tc in tc_dict.items():
+                if term not in term_stats:
+                    term_stats[term] = {'count': 0, 'max_tc': 0.0}
+                term_stats[term]['count'] += 1
+                term_stats[term]['max_tc'] = max(term_stats[term]['max_tc'], tc)
+
+    if not term_stats:
+        return None
+
+    # Sort terms alphabetically for performance
+    sorted_terms = sorted(term_stats.keys())
+
+    # Generate VALUES clause
+    values_list = []
+    for term in sorted_terms:
+        escaped_term = term.replace("'", "''")
+        count = term_stats[term]['count']
+        max_tc = term_stats[term]['max_tc']
+        values_list.append(f"('{escaped_term}', {count}, {max_tc})")
+
+    values_clause = ",\n        ".join(values_list)
+
+    sql = f"""
+        INSERT INTO {terms_table} (term, freq, ub)
+        VALUES
+        {values_clause}
+        ON CONFLICT (term)
+        DO UPDATE SET
+            freq = {terms_table}.freq + EXCLUDED.freq,
+            ub = GREATEST({terms_table}.ub, EXCLUDED.ub)
+    """
+
+    return sql
 
 
 
@@ -234,8 +268,10 @@ def index_single_batch(
                 print(f"[INFO] TC's: {json.dumps(batch_tc, indent=2)}")
 
             # Call update functions
+            sql = update_term_frequency(batch_tc, index_tables['terms'], verbose)
+            print(f"SQL: {sql}")
+
             update_term_contribution(cursor, batch, primary_key_type, index_tables['term_tc'], verbose)
-            update_term_frequency(cursor, batch, primary_key_type, index_tables['terms'], verbose)
             update_bmw_blocks(cursor, batch, primary_key_type, index_tables['bmw'], index_tables['term_tc'], block_size, verbose)
             update_corpus(cursor, batch, index_tables['corpus'], verbose)
 
