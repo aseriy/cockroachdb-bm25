@@ -126,19 +126,50 @@ def update_corpus(
 
 
 def update_term_contribution(
-    cursor,
-    batch: list,
+    batch_tc: list,
     doc_id_type: str,
     term_tc_table: str,
     verbose=False
-):
-    # -- -- Add term contrib (TC) to _tsv_term_tc_<tbl_oid>_<col_oid>
-    # -- INSERT INTO _tsv_term_tc_131_3 (doc_id, term, tc)
-    # -- SELECT id, term, tc
-    # -- FROM jsonb_to_recordset(v_tsv_term_tc)
-    # --     AS x(id UUID, term STRING, tc FLOAT);
+) -> str | None:
+    """Generate SQL to insert term contributions into term_tc table.
 
-    pass
+    Args:
+        batch_tc: List of {doc_id: {term: tc, ...}} dictionaries
+        doc_id_type: SQL type for doc_id (e.g., "uuid", "int8")
+        term_tc_table: Term contribution table name
+        verbose: Enable verbose logging
+
+    Returns:
+        SQL INSERT statement, or None if no data
+    """
+    # Flatten batch_tc into (doc_id, term, tc) tuples
+    tc_rows = []
+    for doc_tc_dict in batch_tc:
+        for doc_id, tc_dict in doc_tc_dict.items():
+            for term, tc in tc_dict.items():
+                tc_rows.append((doc_id, term, tc))
+
+    if not tc_rows:
+        return None
+
+    # Sort by (doc_id, term) for performance
+    tc_rows.sort(key=lambda x: (x[0], x[1]))
+
+    # Generate VALUES clause
+    values_list = []
+    for doc_id, term, tc in tc_rows:
+        escaped_term = term.replace("'", "''")
+        values_list.append(f"('{doc_id}'::{doc_id_type}, '{escaped_term}', {tc})")
+
+    values_clause = ",\n        ".join(values_list)
+
+    sql = f"""
+        INSERT INTO {term_tc_table} (doc_id, term, tc)
+        VALUES
+        {values_clause}
+    """
+
+    return sql
 
 
 
@@ -268,10 +299,13 @@ def index_single_batch(
                 print(f"[INFO] TC's: {json.dumps(batch_tc, indent=2)}")
 
             # Call update functions
+            
             sql = update_term_frequency(batch_tc, index_tables['terms'], verbose)
             print(f"SQL: {sql}")
 
-            update_term_contribution(cursor, batch, primary_key_type, index_tables['term_tc'], verbose)
+            sql = update_term_contribution(batch_tc, primary_key_type, index_tables['term_tc'], verbose)
+            print(f"SQL: {sql}")
+
             update_bmw_blocks(cursor, batch, primary_key_type, index_tables['bmw'], index_tables['term_tc'], block_size, verbose)
             update_corpus(cursor, batch, index_tables['corpus'], verbose)
 
